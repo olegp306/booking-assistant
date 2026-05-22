@@ -1,6 +1,6 @@
 # Slotly AI Progress Checklist
 
-Current readiness: 100% for the approved MVP plan, plus 100% for the current free-first specialist scheduling and mock paid-booking iteration.
+Current readiness: 100% for the approved MVP plan, plus 100% for the current provider assistant FAQ onboarding iteration.
 
 Last verification: 2026-05-22 19:00 Europe/Paris.
 
@@ -84,6 +84,16 @@ Last verification: 2026-05-22 19:00 Europe/Paris.
 - [x] Slice 8: Update admin UI to say specialist/booking link and expose optional paid booking.
 - [x] Slice 9: Update README with free-first positioning and mock payment boundary.
 
+## Iteration 9 Checklist: Provider Assistant FAQ Onboarding
+
+- [x] Slice 1: Add failing tests for service-category detection, preparation questions, API FAQ storage, and Telegram assistant copy.
+- [x] Slice 2: Add provider assistant domain module with adaptive question sets for fitness, therapy, beauty, education, consulting, and generic services.
+- [x] Slice 3: Persist provider-scoped assistant FAQ answers in SQLite.
+- [x] Slice 4: Accept assistant FAQ answers during provider creation and expose them in `/api/state`.
+- [x] Slice 5: Extend Telegram specialist onboarding with five adaptive preparation questions before availability.
+- [x] Slice 6: Position the client-facing bot as the specialist's assistant and preview preparation answers.
+- [x] Slice 7: Update README, implementation plan, and package version.
+
 ## Verification Evidence
 
 - `npm test`: 4 test files passed, 10 tests passed.
@@ -111,6 +121,9 @@ Last verification: 2026-05-22 19:00 Europe/Paris.
 - Iteration 8 `npm test`: 11 test files passed, 50 tests passed.
 - Iteration 8 `npm run build`: TypeScript compilation passed.
 - Iteration 8 smoke: created specialist `paid-smoke-specialist`, enabled full payment for 50.00 EUR, created a pending booking with payment intent, confirmed mock payment, booking became `confirmed`, and ledger split into `platform_fee = 250` and `provider_payout = 4750`.
+- Iteration 9 `npm test`: 12 test files passed, 57 tests passed.
+- Iteration 9 `npm run build`: TypeScript compilation passed.
+- Iteration 9 smoke: created fitness specialist `nastya-faq`, confirmed `/api/state` returned 5 `providerAssistantFaqs` and category `fitness`.
 
 ## Known Constraints
 

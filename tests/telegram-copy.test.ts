@@ -5,6 +5,8 @@ import {
   formatBookedMessage,
   formatPendingBookingNotification,
   formatProviderOnboardingComplete,
+  formatProviderAssistantIntro,
+  formatProviderAssistantQuestion,
   formatProviderShareLink,
   formatProviderWelcome,
   formatPaymentRequest,
@@ -48,6 +50,33 @@ describe("telegram copy", () => {
         bio: "Силовые и мобильность"
       }, "ru")
     ).toBe("Вы записываетесь к Настя.\nФормат: Фитнес-тренировка\nСиловые и мобильность");
+  });
+
+  it("positions the bot as the provider's assistant and previews preparation answers", () => {
+    expect(
+      formatProviderAssistantIntro(
+        { displayName: "Настя", serviceName: "фитнес-тренировка" },
+        [
+          {
+            question: "Что взять с собой?",
+            answer: "Кроссовки, воду и полотенце."
+          },
+          {
+            question: "Какая одежда подойдет?",
+            answer: "Удобная спортивная одежда."
+          }
+        ],
+        "ru"
+      )
+    ).toBe(
+      "Я помощник Насти. Помогу выбрать время для фитнес-тренировка и подскажу, как подготовиться.\n\nЧто взять с собой? Кроссовки, воду и полотенце.\nКакая одежда подойдет? Удобная спортивная одежда."
+    );
+  });
+
+  it("formats adaptive onboarding preparation questions for specialists", () => {
+    expect(formatProviderAssistantQuestion("Что взять с собой?", 1, 5, "ru")).toBe(
+      "Чтобы я мог помогать вашим клиентам вместо того, чтобы они каждый раз спрашивали вас, ответьте на короткий вопрос 2/5:\nЧто взять с собой?"
+    );
   });
 
   it("formats pending booking notification with approve and decline buttons", () => {

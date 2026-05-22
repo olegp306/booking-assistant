@@ -3,6 +3,7 @@ import type { Booking } from "../domain/booking.js";
 import { createBooking } from "../domain/booking.js";
 import { generateSlots, parseAvailabilityText } from "../domain/availability.js";
 import { normalizeLeadInput } from "../domain/lead.js";
+import { detectProviderAssistantCategory, getPreparationQuestions } from "../domain/provider-assistant.js";
 import { createProviderProfile } from "../domain/provider.js";
 import { localDateKey } from "../domain/trainer-controls.js";
 import type { CrmExporter } from "../integrations/crm.js";
@@ -12,6 +13,8 @@ import {
   copy,
   detectLanguage,
   formatBookedMessage,
+  formatProviderAssistantIntro,
+  formatProviderAssistantQuestion,
   formatPendingBookingNotification,
   formatPaymentRequest,
   formatProviderOnboardingComplete,
@@ -34,7 +37,7 @@ type Session = {
   slots?: Array<{ label: string; start: string; end: string }>;
 };
 
-type TrainerStep = "displayName" | "serviceName" | "bio" | "photo" | "availability";
+type TrainerStep = "displayName" | "serviceName" | "bio" | "photo" | "assistantFaq" | "availability";
 
 type TrainerSession = {
   step: TrainerStep;
@@ -43,6 +46,9 @@ type TrainerSession = {
   serviceName?: string;
   bio?: string;
   photoRef?: string;
+  assistantQuestions?: string[];
+  assistantAnswers?: string[];
+  assistantQuestionIndex?: number;
 };
 
 export function createTelegramBot(input: { token: string; database: AppDatabase; crm: CrmExporter }) {
@@ -60,10 +66,14 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
     sessions.set(userId, { step: "name", language, ...(provider ? { providerSlug: provider.slug } : {}) });
 
     if (provider) {
+      const assistantFaqs = input.database.listProviderAssistantFaqs(provider.id);
       if (provider.photoRef) {
         await ctx.replyWithPhoto(provider.photoRef, { caption: formatProviderWelcome(provider, language) });
       } else {
         await ctx.reply(formatProviderWelcome(provider, language));
+      }
+      if (assistantFaqs.length > 0) {
+        await ctx.reply(formatProviderAssistantIntro(provider, assistantFaqs, language));
       }
       await ctx.reply(copy(language).askName);
       return;
@@ -147,9 +157,16 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
     if (!trainerSession || trainerSession.step !== "photo") return;
 
     trainerSession.photoRef = ctx.message.photo.at(-1)?.file_id;
-    trainerSession.step = "availability";
+    startAssistantFaqOnboarding(trainerSession);
     trainerSessions.set(userId, trainerSession);
-    await ctx.reply(copy(trainerSession.language).trainerAskAvailability);
+    await ctx.reply(
+      formatProviderAssistantQuestion(
+        trainerSession.assistantQuestions?.[0] ?? "",
+        0,
+        trainerSession.assistantQuestions?.length ?? 5,
+        trainerSession.language
+      )
+    );
   });
 
   bot.action(/^approve:(.+)$/, async (ctx) => {
@@ -333,6 +350,28 @@ async function handleTrainerText(input: {
     if (!/^skip|пропустить$/i.test(input.text)) {
       trainerSession.photoRef = input.text;
     }
+    startAssistantFaqOnboarding(trainerSession);
+    await input.reply(
+      formatProviderAssistantQuestion(
+        trainerSession.assistantQuestions?.[0] ?? "",
+        0,
+        trainerSession.assistantQuestions?.length ?? 5,
+        trainerSession.language
+      )
+    );
+    return false;
+  }
+
+  if (trainerSession.step === "assistantFaq") {
+    trainerSession.assistantAnswers = [...(trainerSession.assistantAnswers ?? []), input.text];
+    const nextIndex = (trainerSession.assistantQuestionIndex ?? 0) + 1;
+    const questions = trainerSession.assistantQuestions ?? [];
+    if (nextIndex < questions.length) {
+      trainerSession.assistantQuestionIndex = nextIndex;
+      await input.reply(formatProviderAssistantQuestion(questions[nextIndex], nextIndex, questions.length, trainerSession.language));
+      return false;
+    }
+
     trainerSession.step = "availability";
     await input.reply(copy(trainerSession.language).trainerAskAvailability);
     return false;
@@ -349,6 +388,7 @@ async function handleTrainerText(input: {
   });
   const provider = input.database.createProvider(profile);
   input.database.saveAvailability(parseAvailabilityText(input.text, "Europe/Paris"), provider.id);
+  input.database.replaceProviderAssistantFaqs(provider.id, `${provider.serviceName} ${provider.bio}`, trainerSession.assistantAnswers ?? []);
   const shareLink = formatProviderShareLink(input.botUsername, provider.slug);
   await input.reply(formatProviderOnboardingComplete(provider.displayName, shareLink, trainerSession.language));
   return true;
@@ -356,4 +396,12 @@ async function handleTrainerText(input: {
 
 function formatBookingTime(value: string): string {
   return new Date(value).toLocaleString("ru-RU", { timeZone: "Europe/Paris" });
+}
+
+function startAssistantFaqOnboarding(trainerSession: TrainerSession): void {
+  const category = detectProviderAssistantCategory(`${trainerSession.serviceName ?? ""} ${trainerSession.bio ?? ""}`);
+  trainerSession.assistantQuestions = getPreparationQuestions(category, trainerSession.language);
+  trainerSession.assistantAnswers = [];
+  trainerSession.assistantQuestionIndex = 0;
+  trainerSession.step = "assistantFaq";
 }

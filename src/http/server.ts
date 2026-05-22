@@ -22,6 +22,7 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
     const bookings = input.database.listBookings(selectedProvider.id);
     const leads = input.database.listLeads(selectedProvider.id);
     const timeOffs = input.database.listTimeOffs(selectedProvider.id);
+    const providerAssistantFaqs = input.database.listProviderAssistantFaqs(selectedProvider.id);
     const from = request.query.from ? new Date(String(request.query.from)) : new Date();
     const days = request.query.days ? Number(request.query.days) : 14;
     response.json({
@@ -37,6 +38,7 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
         blockedIntervals: timeOffs
       }).map((slot) => ({ ...slot, durationMinutes: selectedProvider.sessionDurationMinutes })),
       timeOffs,
+      providerAssistantFaqs,
       leads,
       leadInsights: Object.fromEntries(leads.map((lead) => [lead.id, analyzeLead(lead)])),
       providerCrm: buildProviderCrmSnapshot({ provider: selectedProvider, bookingCount: bookings.length }),
@@ -50,6 +52,13 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
       const provider = input.database.createProvider(profile);
       const availability = parseAvailabilityText(profile.availabilityText, "Europe/Paris");
       input.database.saveAvailability(availability, provider.id);
+      if (Array.isArray(request.body.assistantFaqAnswers)) {
+        input.database.replaceProviderAssistantFaqs(
+          provider.id,
+          `${provider.serviceName} ${provider.bio}`,
+          request.body.assistantFaqAnswers.map((answer: unknown) => String(answer ?? ""))
+        );
+      }
       response.status(201).json({ provider });
     } catch (error) {
       response.status(400).json({ error: errorMessage(error) });

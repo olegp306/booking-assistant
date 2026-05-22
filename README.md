@@ -7,6 +7,7 @@ Telegram-first booking link for simple specialists: trainers, teachers, coaches,
 - Greets a Telegram visitor and collects name, contact, and consultation topic.
 - Shows available consultation slots and confirms a booking.
 - Lets a specialist create a Telegram profile, receive a personal booking link, update slots, and check today's schedule.
+- Collects adaptive preparation answers during specialist onboarding so the bot can act as that specialist's helper.
 - Lets a specialist enable auto-approve for specific clients.
 - Lets a specialist block vacation or time-off dates so clients cannot book them.
 - Keeps booking free by default, with optional paid booking when the specialist wants clients to prepay.
@@ -54,7 +55,13 @@ Create a specialist in the admin UI, through Telegram onboarding, or through `PO
 https://t.me/slotly_ai_bot?start=nastya
 ```
 
-When a client opens the link, the Telegram bot shows the specialist profile and books against that specialist's availability.
+When a client opens the link, the Telegram bot shows the specialist profile, introduces itself as that specialist's assistant, shares preparation answers if they were collected, and books against that specialist's availability.
+
+## Assistant FAQ Onboarding
+
+During `/trainer` onboarding, Slotly looks at the specialist's service description and chooses a small five-question preparation set. A fitness trainer gets questions about clothes, shoes, food, equipment, and health limits. A psychologist gets questions about the first consultation, anxiety before the meeting, and what to prepare. Beauty specialists get procedure prep, aftercare, contraindications, and timing.
+
+The answers are stored per specialist and returned as `providerAssistantFaqs` in `/api/state?provider=:slug`. Clients see the bot positioned as: "I am this specialist's assistant; I can help you choose a time and prepare."
 
 ## Specialist Telegram Commands
 
@@ -67,7 +74,7 @@ When a client opens the link, the Telegram bot shows the specialist profile and 
 /vacation vacation 2026-06-01 to 2026-06-14
 ```
 
-`/trainer` starts specialist onboarding in Telegram: name, service format, short bio, optional photo, availability, and then a personal booking link.
+`/trainer` starts specialist onboarding in Telegram: name, service format, short bio, optional photo, adaptive preparation questions, availability, and then a personal booking link.
 
 `/today` shows the specialist who is booked today. Manual bookings stay `pending` until approved with Telegram inline buttons, unless the client contact is on the specialist's auto-approve list.
 

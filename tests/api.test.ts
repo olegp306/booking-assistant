@@ -62,6 +62,52 @@ describe("http api", () => {
     });
   });
 
+  it("stores provider assistant FAQ answers and exposes them only for the selected provider", async () => {
+    const app = appWithMemoryDatabase();
+    const providerResponse = await request(app)
+      .post("/api/providers")
+      .send({
+        telegramUserId: "trainer-faq",
+        displayName: "Nastya",
+        serviceName: "Фитнес тренер",
+        bio: "Силовые и растяжка",
+        availabilityText: "Monday to Friday 14:00-17:00",
+        assistantFaqAnswers: [
+          "Возьмите воду и приходите за пять минут.",
+          "Кроссовки, полотенце и бутылку воды.",
+          "Удобная спортивная одежда.",
+          "Не ешьте плотно за час до занятия.",
+          "Напишите о травмах заранее."
+        ]
+      })
+      .expect(201);
+
+    const otherProvider = await request(app)
+      .post("/api/providers")
+      .send({
+        telegramUserId: "beauty-faq",
+        displayName: "Lena",
+        serviceName: "Наращивание ресниц",
+        bio: "Beauty",
+        availabilityText: "Monday to Friday 14:00-17:00",
+        assistantFaqAnswers: ["Приходите без макияжа."]
+      })
+      .expect(201);
+
+    const stateResponse = await request(app).get(`/api/state?provider=${providerResponse.body.provider.slug}`).expect(200);
+    const otherState = await request(app).get(`/api/state?provider=${otherProvider.body.provider.slug}`).expect(200);
+
+    expect(stateResponse.body.providerAssistantFaqs).toHaveLength(5);
+    expect(stateResponse.body.providerAssistantFaqs[0]).toMatchObject({
+      providerId: providerResponse.body.provider.id,
+      category: "fitness",
+      question: "Как клиенту подготовиться к первой тренировке с вами?",
+      answer: "Возьмите воду и приходите за пять минут."
+    });
+    expect(otherState.body.providerAssistantFaqs).toHaveLength(1);
+    expect(otherState.body.providerAssistantFaqs[0].providerId).toBe(otherProvider.body.provider.id);
+  });
+
   it("updates provider CRM preferences and exposes consent-aware usage state", async () => {
     const app = appWithMemoryDatabase();
     const providerResponse = await request(app)
