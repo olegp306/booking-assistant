@@ -10,6 +10,7 @@ Telegram-first booking link for simple specialists: trainers, teachers, coaches,
 - Lets a specialist enable auto-approve for specific clients.
 - Lets a specialist block vacation or time-off dates so clients cannot book them.
 - Keeps booking free by default, with optional paid booking when the specialist wants clients to prepay.
+- Lets a specialist create a group event link with one date/time and multiple seats.
 - Stores leads, bookings, availability, payment intents, and ledger entries in SQLite.
 - Provides a lightweight admin UI for availability, manual leads, manual bookings, and optional paid-booking setup.
 - Shows lightweight lead intelligence: contact type, missing fields, and lead temperature.
@@ -92,6 +93,22 @@ Free scheduling is the default. A specialist can optionally turn on paid booking
 - `full`: clients pay the full session price.
 
 The current implementation uses a local mock payment provider. Paid booking creates a payment intent, holds the slot as `pending`, and confirms the booking after mock payment confirmation. Ledger entries split the payment into platform fee and specialist payout. A real payment provider can replace the mock boundary later.
+
+## Group Events
+
+Specialists can create one-time events for multiple people:
+
+```http
+POST /api/providers/:slug/events
+```
+
+Each event has a title, description, start/end time, capacity, approval mode, and optional payment-ready settings. The event receives a Telegram deep link:
+
+```text
+https://t.me/slotly_ai_bot?start=event_open-singing-class
+```
+
+Clients can register for the same date/time. Manual events create `pending` registrations, the host approves or declines, and capacity counts pending plus confirmed seats.
 
 ## Useful Commands
 

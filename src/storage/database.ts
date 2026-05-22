@@ -11,6 +11,15 @@ import {
   type PaymentIntent,
   type PaymentMode
 } from "../domain/payment.js";
+import {
+  canAcceptRegistration,
+  createEvent,
+  createEventRegistration,
+  type Event,
+  type EventInput,
+  type EventRegistration,
+  type EventRegistrationStatus
+} from "../domain/event.js";
 import { parseTimeOffText, type TimeOffBlock } from "../domain/time-off.js";
 import { isSameLocalDate, normalizeAutoApprovalContact, type ScheduleBooking } from "../domain/trainer-controls.js";
 import type { ConfirmationMode, ProviderBillingStatus, ProviderPlan, ProviderProfile } from "../domain/provider.js";
@@ -178,6 +187,60 @@ export function createDatabase(path = "slotly-ai.sqlite") {
     listTimeOffs(providerId: string): Required<TimeOffBlock>[] {
       const rows = db.prepare("select * from time_offs where provider_id = ? order by start_at asc").all(providerId) as TimeOffRow[];
       return rows.map(mapTimeOff);
+    },
+    createEvent(input: Omit<EventInput, "providerId"> & { providerId: string }): Event {
+      const event = createEvent(input);
+      db.prepare(
+        `insert into events (
+          id, provider_id, slug, title, description, start_at, end_at, capacity,
+          approval_mode, payment_mode, price_minor, currency, created_at
+        ) values (
+          @id, @providerId, @slug, @title, @description, @start, @end, @capacity,
+          @approvalMode, @paymentMode, @priceMinor, @currency, @createdAt
+        )`
+      ).run(event);
+      return event;
+    },
+    findEventBySlug(slug: string): Event | undefined {
+      const row = db.prepare("select * from events where slug = ?").get(slug) as EventRow | undefined;
+      return row ? mapEvent(row) : undefined;
+    },
+    listEventRegistrations(eventId: string): EventRegistration[] {
+      const rows = db.prepare("select * from event_registrations where event_id = ? order by created_at asc").all(eventId) as EventRegistrationRow[];
+      return rows.map(mapEventRegistration);
+    },
+    countActiveEventRegistrations(eventId: string): number {
+      const row = db.prepare(
+        "select count(*) as count from event_registrations where event_id = ? and status in ('pending', 'confirmed')"
+      ).get(eventId) as { count: number };
+      return row.count;
+    },
+    createEventRegistration(event: Event, leadId: string): EventRegistration {
+      if (!canAcceptRegistration({ capacity: event.capacity, activeRegistrationCount: this.countActiveEventRegistrations(event.id) })) {
+        throw new Error("This event is full.");
+      }
+      const registration = createEventRegistration({ eventId: event.id, leadId, approvalMode: event.approvalMode });
+      db.prepare(
+        `insert into event_registrations (id, event_id, lead_id, status, created_at)
+         values (@id, @eventId, @leadId, @status, @createdAt)`
+      ).run(registration);
+      return registration;
+    },
+    updateEventRegistrationStatus(id: string, status: "confirmed" | "declined"): EventRegistration {
+      db.prepare("update event_registrations set status = ? where id = ?").run(status, id);
+      const row = db.prepare("select * from event_registrations where id = ?").get(id) as EventRegistrationRow | undefined;
+      if (!row) {
+        throw new Error("Event registration not found.");
+      }
+      return mapEventRegistration(row);
+    },
+    getEventRegistrationDetail(id: string): { registration: EventRegistration; event: Event; lead: StoredLead } | undefined {
+      const registrationRow = db.prepare("select * from event_registrations where id = ?").get(id) as EventRegistrationRow | undefined;
+      if (!registrationRow) return undefined;
+      const registration = mapEventRegistration(registrationRow);
+      const eventRow = db.prepare("select * from events where id = ?").get(registration.eventId) as EventRow;
+      const leadRow = db.prepare("select * from leads where id = ?").get(registration.leadId) as LeadRow;
+      return { registration, event: mapEvent(eventRow), lead: mapLead(leadRow) };
     },
     getAvailability(providerId?: string): ParsedAvailability {
       const selectedProviderId = providerId ?? this.getDefaultProvider().id;
@@ -423,6 +486,30 @@ function migrate(db: Database.Database): void {
       amount_minor integer not null,
       created_at text not null
     );
+
+    create table if not exists events (
+      id text primary key,
+      provider_id text not null,
+      slug text not null unique,
+      title text not null,
+      description text not null,
+      start_at text not null,
+      end_at text not null,
+      capacity integer not null,
+      approval_mode text not null,
+      payment_mode text not null default 'none',
+      price_minor integer not null default 0,
+      currency text not null default 'EUR',
+      created_at text not null
+    );
+
+    create table if not exists event_registrations (
+      id text primary key,
+      event_id text not null,
+      lead_id text not null,
+      status text not null,
+      created_at text not null
+    );
   `);
   ensureColumn(db, "availability", "provider_id", "text not null default 'provider-default'");
   ensureColumn(db, "leads", "provider_id", "text not null default 'provider-default'");
@@ -545,6 +632,30 @@ type LedgerEntryRow = {
   created_at: string;
 };
 
+type EventRow = {
+  id: string;
+  provider_id: string;
+  slug: string;
+  title: string;
+  description: string;
+  start_at: string;
+  end_at: string;
+  capacity: number;
+  approval_mode: ConfirmationMode;
+  payment_mode: PaymentMode;
+  price_minor: number;
+  currency: string;
+  created_at: string;
+};
+
+type EventRegistrationRow = {
+  id: string;
+  event_id: string;
+  lead_id: string;
+  status: EventRegistrationStatus;
+  created_at: string;
+};
+
 function mapProvider(row: ProviderRow): StoredProvider {
   return {
     id: row.id,
@@ -626,6 +737,34 @@ function mapLedgerEntry(row: LedgerEntryRow): Required<LedgerEntry> {
     providerId: row.provider_id,
     type: row.type,
     amountMinor: row.amount_minor,
+    createdAt: row.created_at
+  };
+}
+
+function mapEvent(row: EventRow): Event {
+  return {
+    id: row.id,
+    providerId: row.provider_id,
+    slug: row.slug,
+    title: row.title,
+    description: row.description,
+    start: row.start_at,
+    end: row.end_at,
+    capacity: row.capacity,
+    approvalMode: row.approval_mode,
+    paymentMode: row.payment_mode,
+    priceMinor: row.price_minor,
+    currency: row.currency,
+    createdAt: row.created_at
+  };
+}
+
+function mapEventRegistration(row: EventRegistrationRow): EventRegistration {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    leadId: row.lead_id,
+    status: row.status,
     createdAt: row.created_at
   };
 }

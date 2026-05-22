@@ -1,8 +1,8 @@
 # Slotly AI Progress Checklist
 
-Current readiness: 100% for the approved MVP plan, plus 100% for the current free-first specialist scheduling and mock paid-booking iteration.
+Current readiness: 100% for the approved MVP plan, plus 100% for the current group events MVP iteration.
 
-Last verification: 2026-05-22 19:00 Europe/Paris.
+Last verification: 2026-05-22 19:27 Europe/Paris.
 
 ## Layer Checklist
 
@@ -84,6 +84,18 @@ Last verification: 2026-05-22 19:00 Europe/Paris.
 - [x] Slice 8: Update admin UI to say specialist/booking link and expose optional paid booking.
 - [x] Slice 9: Update README with free-first positioning and mock payment boundary.
 
+## Iteration 9 Checklist: Group Events MVP
+
+- [x] Slice 1: Start versioned work on branch `codex/group-events-mvp`.
+- [x] Slice 2: Add implementation plan in `docs/superpowers/plans/2026-05-22-group-events-mvp.md`.
+- [x] Slice 3: Add failing tests for event domain, event API, and Telegram event copy.
+- [x] Slice 4: Add `Event` and `EventRegistration` domain.
+- [x] Slice 5: Persist events and registrations in SQLite.
+- [x] Slice 6: Add event API endpoints for create, read, register, approve, and decline.
+- [x] Slice 7: Add event Telegram deep-link routing and host approval callbacks.
+- [x] Slice 8: Bump version to `0.2.0`.
+- [x] Slice 9: Update README and verify with HTTP smoke.
+
 ## Verification Evidence
 
 - `npm test`: 4 test files passed, 10 tests passed.
@@ -111,6 +123,9 @@ Last verification: 2026-05-22 19:00 Europe/Paris.
 - Iteration 8 `npm test`: 11 test files passed, 50 tests passed.
 - Iteration 8 `npm run build`: TypeScript compilation passed.
 - Iteration 8 smoke: created specialist `paid-smoke-specialist`, enabled full payment for 50.00 EUR, created a pending booking with payment intent, confirmed mock payment, booking became `confirmed`, and ledger split into `platform_fee = 250` and `provider_payout = 4750`.
+- Iteration 9 `npm test`: 12 test files passed, 57 tests passed.
+- Iteration 9 `npm run build`: TypeScript compilation passed.
+- Iteration 9 smoke: created host `event-smoke-host`, created event `open-singing-smoke`, registered participant as `pending`, approved registration to `confirmed`, and confirmed remaining seats = 1.
 
 ## Known Constraints
 
@@ -119,3 +134,4 @@ Last verification: 2026-05-22 19:00 Europe/Paris.
 - External CRM integration is a local no-op implementation behind the exporter interface.
 - Real payment collection is not wired yet; the app now has a local mock payment provider, payment intents, and ledger entries so a real payment adapter can be added next.
 - Telegram onboarding and approve/decline actions require a real `TELEGRAM_BOT_TOKEN` for end-to-end testing against Telegram.
+- Pull request creation requires a configured GitHub remote.
