@@ -24,6 +24,7 @@ describe("http api", () => {
     expect(response.body.bookings).toEqual([]);
     expect(response.body.providers.length).toBe(1);
     expect(response.body.selectedProvider.slug).toBe("default");
+    expect(response.body.botUsername).toBe("slotly_ai_bot");
   });
 
   it("creates providers and scopes state by provider slug", async () => {
@@ -386,7 +387,7 @@ describe("http api", () => {
       capacity: 2,
       approvalMode: "manual"
     });
-    expect(eventResponse.body.shareLink).toContain("start=event_open-singing-class");
+    expect(eventResponse.body.shareLink).toBe("https://t.me/slotly_ai_bot?start=event_open-singing-class");
 
     const registrationResponse = await request(app)
       .post(`/api/events/${eventResponse.body.event.slug}/registrations`)

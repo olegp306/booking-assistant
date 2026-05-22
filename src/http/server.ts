@@ -9,7 +9,8 @@ import { createProviderProfile } from "../domain/provider.js";
 import type { CrmExporter } from "../integrations/crm.js";
 import type { AppDatabase } from "../storage/database.js";
 
-export function createServer(input: { database: AppDatabase; crm: CrmExporter }) {
+export function createServer(input: { database: AppDatabase; crm: CrmExporter; botUsername?: string }) {
+  const botUsername = input.botUsername ?? "slotly_ai_bot";
   const app = express();
   app.use(cors());
   app.use(express.json());
@@ -26,6 +27,7 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
     const days = request.query.days ? Number(request.query.days) : 14;
     response.json({
       providers: input.database.listProviders(),
+      botUsername,
       selectedProvider,
       availability,
       slots: generateSlots({
@@ -129,7 +131,7 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
         priceMinor: request.body.priceMinor,
         currency: request.body.currency
       });
-      response.status(201).json({ event, shareLink: `https://t.me/slotly_ai_bot?start=event_${event.slug}` });
+      response.status(201).json({ event, shareLink: `https://t.me/${botUsername}?start=event_${event.slug}` });
     } catch (error) {
       response.status(400).json({ error: errorMessage(error) });
     }

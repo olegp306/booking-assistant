@@ -41,11 +41,25 @@ If port `3001` is busy, change `PORT` in `.env`.
 
 ```text
 TELEGRAM_BOT_TOKEN=your-token-here
+TELEGRAM_BOT_USERNAME=your_bot_username
 ```
 
 3. Restart the app with `npm run dev`.
 
 If `TELEGRAM_BOT_TOKEN` is empty, the app still runs the admin UI and API.
+
+## Production Env
+
+Use `.env.production.example` as the deploy checklist. The current production-required values are:
+
+```text
+PORT=3001
+DATABASE_PATH=/var/lib/slotly/slotly-ai.sqlite
+TELEGRAM_BOT_TOKEN=replace-with-botfather-token
+TELEGRAM_BOT_USERNAME=slotly_ai_bot
+```
+
+The template also includes reserved placeholders for OpenAI, real payment providers, and external CRM. Those are not required by the current code yet.
 
 ## Specialist Booking Links
 

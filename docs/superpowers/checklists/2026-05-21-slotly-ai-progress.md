@@ -95,6 +95,7 @@ Last verification: 2026-05-22 19:27 Europe/Paris.
 - [x] Slice 7: Add event Telegram deep-link routing and host approval callbacks.
 - [x] Slice 8: Bump version to `0.2.0`.
 - [x] Slice 9: Update README and verify with HTTP smoke.
+- [x] Slice 10: Add production env template and configurable Telegram bot username for share links.
 
 ## Verification Evidence
 
@@ -126,6 +127,7 @@ Last verification: 2026-05-22 19:27 Europe/Paris.
 - Iteration 9 `npm test`: 12 test files passed, 57 tests passed.
 - Iteration 9 `npm run build`: TypeScript compilation passed.
 - Iteration 9 smoke: created host `event-smoke-host`, created event `open-singing-smoke`, registered participant as `pending`, approved registration to `confirmed`, and confirmed remaining seats = 1.
+- Iteration 9 env hardening: `TELEGRAM_BOT_USERNAME` now drives generated share links; `.env.production.example` documents required production values and reserved future AI/payment/CRM placeholders.
 
 ## Known Constraints
 
