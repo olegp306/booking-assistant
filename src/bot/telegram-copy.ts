@@ -81,6 +81,36 @@ export function formatProviderWelcome(
   return [`Вы записываетесь к ${provider.displayName}.`, `Формат: ${provider.serviceName}`, provider.bio].join("\n");
 }
 
+export function formatProviderAssistantIntro(
+  provider: { displayName: string; serviceName: string },
+  faqs: Array<{ question: string; answer: string }>,
+  language: BotLanguage = "ru"
+): string {
+  if (language === "en") {
+    return [
+      `I am ${provider.displayName}'s assistant. I can help you choose a time for ${provider.serviceName} and prepare for the session.`,
+      faqs.map((faq) => `${faq.question} ${faq.answer}`).join("\n")
+    ].join("\n\n");
+  }
+
+  return [
+    `Я помощник ${possessiveRuName(provider.displayName)}. Помогу выбрать время для ${provider.serviceName} и подскажу, как подготовиться.`,
+    faqs.map((faq) => `${faq.question} ${faq.answer}`).join("\n")
+  ].join("\n\n");
+}
+
+export function formatProviderAssistantQuestion(question: string, index: number, total: number, language: BotLanguage = "ru"): string {
+  if (language === "en") {
+    return `So I can help your clients instead of making them ask you every time, please answer short question ${index + 1}/${total}:\n${question}`;
+  }
+
+  return `Чтобы я мог помогать вашим клиентам вместо того, чтобы они каждый раз спрашивали вас, ответьте на короткий вопрос ${index + 1}/${total}:\n${question}`;
+}
+
+function possessiveRuName(name: string): string {
+  return name.endsWith("я") ? `${name.slice(0, -1)}и` : name;
+}
+
 export function formatPendingBookingNotification(
   input: {
     bookingId: string;

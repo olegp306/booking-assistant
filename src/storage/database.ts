@@ -14,6 +14,7 @@ import {
 import { parseTimeOffText, type TimeOffBlock } from "../domain/time-off.js";
 import { isSameLocalDate, normalizeAutoApprovalContact, type ScheduleBooking } from "../domain/trainer-controls.js";
 import type { ConfirmationMode, ProviderBillingStatus, ProviderPlan, ProviderProfile } from "../domain/provider.js";
+import { buildProviderAssistantFaqs, type ProviderAssistantCategory, type ProviderAssistantFaq } from "../domain/provider-assistant.js";
 
 export type StoredLead = NormalizedLead & {
   id: string;
@@ -134,6 +135,29 @@ export function createDatabase(path = "slotly-ai.sqlite") {
         marketingConsent: next.marketingConsent ? 1 : 0
       });
       return this.findProviderBySlug(slug) as StoredProvider;
+    },
+    replaceProviderAssistantFaqs(providerId: string, serviceText: string, answers: string[]): ProviderAssistantFaq[] {
+      const faqs = buildProviderAssistantFaqs({ providerId, serviceText, answers });
+      const transaction = db.transaction(() => {
+        db.prepare("delete from provider_assistant_faqs where provider_id = ?").run(providerId);
+        const insert = db.prepare(
+          `insert into provider_assistant_faqs (
+            id, provider_id, category, position, question, answer, created_at
+          ) values (
+            @id, @providerId, @category, @position, @question, @answer, @createdAt
+          )`
+        );
+        for (const faq of faqs) {
+          insert.run(faq);
+        }
+      });
+      transaction();
+      return faqs;
+    },
+    listProviderAssistantFaqs(providerId: string): ProviderAssistantFaq[] {
+      const rows = db.prepare("select * from provider_assistant_faqs where provider_id = ? order by position asc").all(providerId) as
+        | ProviderAssistantFaqRow[];
+      return rows.map(mapProviderAssistantFaq);
     },
     createAutoApproval(providerId: string, contact: string): { providerId: string; contact: string; createdAt: string } {
       const normalizedContact = normalizeAutoApprovalContact(contact);
@@ -403,6 +427,16 @@ function migrate(db: Database.Database): void {
       created_at text not null
     );
 
+    create table if not exists provider_assistant_faqs (
+      id text primary key,
+      provider_id text not null,
+      category text not null,
+      position integer not null,
+      question text not null,
+      answer text not null,
+      created_at text not null
+    );
+
     create table if not exists payment_intents (
       id text primary key,
       booking_id text not null,
@@ -524,6 +558,16 @@ type TimeOffRow = {
   created_at: string;
 };
 
+type ProviderAssistantFaqRow = {
+  id: string;
+  provider_id: string;
+  category: ProviderAssistantCategory;
+  position: number;
+  question: string;
+  answer: string;
+  created_at: string;
+};
+
 type PaymentIntentRow = {
   id: string;
   booking_id: string;
@@ -601,6 +645,18 @@ function mapTimeOff(row: TimeOffRow): Required<TimeOffBlock> {
     reason: row.reason,
     start: row.start_at,
     end: row.end_at,
+    createdAt: row.created_at
+  };
+}
+
+function mapProviderAssistantFaq(row: ProviderAssistantFaqRow): ProviderAssistantFaq {
+  return {
+    id: row.id,
+    providerId: row.provider_id,
+    category: row.category,
+    position: row.position,
+    question: row.question,
+    answer: row.answer,
     createdAt: row.created_at
   };
 }
