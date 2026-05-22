@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Slotly AI</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="topbar">
+        <div>
+          <p class="eyebrow">Free booking link</p>
+          <h1>Slotly AI</h1>
+        </div>
+        <button id="refreshButton" type="button">Refresh</button>
+      </section>
+
+      <section class="panel availability-panel">
+        <div>
+          <h2>Specialist</h2>
+          <p id="providerSummary"></p>
+          <div id="providerCrm" class="insight-row"></div>
+        </div>
+        <form id="providerForm" class="stack-form">
+          <input id="providerName" name="displayName" autocomplete="name" placeholder="Specialist name" />
+          <input id="providerService" name="serviceName" autocomplete="off" placeholder="Service name" />
+          <input id="providerBio" name="bio" autocomplete="off" placeholder="Short bio" />
+          <input id="providerAvailability" name="availability" autocomplete="off" value="Monday to Friday 14:00-17:00" />
+          <select id="providerPaymentMode" name="paymentMode">
+            <option value="none">Free booking</option>
+            <option value="deposit">Deposit</option>
+            <option value="full">Full payment</option>
+          </select>
+          <input id="providerPrice" name="price" autocomplete="off" placeholder="Optional price, e.g. 50" />
+          <button type="submit">Create Booking Link</button>
+        </form>
+        <p id="providerError" class="error"></p>
+      </section>
+
+      <section class="panel availability-panel">
+        <div>
+          <h2>Availability</h2>
+          <p id="availabilitySummary"></p>
+        </div>
+        <form id="availabilityForm">
+          <input
+            id="availabilityInput"
+            name="availability"
+            autocomplete="off"
+            value="Monday to Friday 14:00-17:00"
+          />
+          <button type="submit">Save</button>
+        </form>
+        <p id="availabilityError" class="error"></p>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <h2>Next Slots</h2>
+          <div id="slots" class="list"></div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Leads</h2>
+            <span id="selectedLeadLabel" class="pill">No lead selected</span>
+          </div>
+          <form id="leadForm" class="stack-form">
+            <input id="leadName" name="name" autocomplete="name" placeholder="Name" />
+            <input id="leadContact" name="contact" autocomplete="email" placeholder="Email or phone" />
+            <input id="leadTopic" name="topic" autocomplete="off" placeholder="Consultation topic" />
+            <button type="submit">Add Lead</button>
+          </form>
+          <p id="leadError" class="error"></p>
+          <div id="leads" class="list"></div>
+        </div>
+
+        <div class="panel">
+          <h2>Bookings</h2>
+          <div id="bookings" class="list"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
