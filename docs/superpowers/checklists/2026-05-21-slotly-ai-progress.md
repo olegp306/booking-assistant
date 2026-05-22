@@ -97,6 +97,7 @@ Last verification: 2026-05-22 19:27 Europe/Paris.
 - [x] Slice 9: Update README and verify with HTTP smoke.
 - [x] Slice 10: Add production env template and configurable Telegram bot username for share links.
 - [x] Slice 11: Add future cancellation remarketing plan for freed paid slots and event seats.
+- [x] Slice 12: Add future feedback intelligence plan for feature requests, bugs, version context, and user/product context.
 
 ## Verification Evidence
 
@@ -130,6 +131,7 @@ Last verification: 2026-05-22 19:27 Europe/Paris.
 - Iteration 9 smoke: created host `event-smoke-host`, created event `open-singing-smoke`, registered participant as `pending`, approved registration to `confirmed`, and confirmed remaining seats = 1.
 - Iteration 9 env hardening: `TELEGRAM_BOT_USERNAME` now drives generated share links; `.env.production.example` documents required production values and reserved future AI/payment/CRM placeholders.
 - Iteration 9 marketing planning: added `2026-05-22-cancellation-remarketing.md` for cancellation-triggered subscriber broadcasts.
+- Iteration 9 feedback planning: added `2026-05-22-feedback-intelligence.md` for Telegram-captured product feedback and feature requests.
 
 ## Known Constraints
 
