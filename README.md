@@ -14,6 +14,8 @@ Telegram-first booking link for simple specialists: trainers, teachers, coaches,
 - Provides a lightweight admin UI for availability, manual leads, manual bookings, and optional paid-booking setup.
 - Shows lightweight lead intelligence: contact type, missing fields, and lead temperature.
 - Supports multiple specialists through one Telegram bot and specialist-specific deep links.
+- Keeps a private client CRM per specialist: clients from one specialist link never appear under another specialist.
+- Supports default, new-client, and personal override prices for known specialist clients.
 - Tracks specialist usage, plan status, booking milestones, and consent flags for future monetization.
 - Keeps a CRM export boundary ready for a future CRM integration.
 
@@ -55,6 +57,18 @@ https://t.me/slotly_ai_bot?start=nastya
 ```
 
 When a client opens the link, the Telegram bot shows the specialist profile and books against that specialist's availability.
+
+## Private Specialist Client CRM
+
+When someone opens a specialist link, Slotly records that person only inside that specialist's client list and sends the specialist a Telegram notification. The admin API exposes scoped client lists through `GET /api/providers/:slug/clients`, and `/api/state?provider=:slug` includes `providerClients` for the selected specialist only.
+
+Specialists can keep pricing simple:
+
+- default price for regular clients;
+- new-client price for first-time clients;
+- personal override price for a specific client.
+
+The first API surface is `POST /api/providers/:slug/pricing-policy`, `POST /api/providers/:slug/clients`, and `POST /api/providers/:slug/clients/:id`. Paid bookings use the known client's price preview when a Telegram client is already linked.
 
 ## Specialist Telegram Commands
 

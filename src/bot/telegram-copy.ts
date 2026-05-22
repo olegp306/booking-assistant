@@ -110,6 +110,17 @@ export function formatPendingBookingNotification(
   ].join("\n");
 }
 
+export function formatNewProviderClientNotification(
+  input: { displayName: string; source: string },
+  language: BotLanguage = "ru"
+): string {
+  if (language === "en") {
+    return `New person from your booking link: ${input.displayName}. I added them to your client list.`;
+  }
+
+  return `У вас новый человек по ссылке: ${input.displayName}. Я добавила его в вашу базу клиентов.`;
+}
+
 export function buildApprovalKeyboard(bookingId: string, language: BotLanguage = "ru") {
   const approveText = language === "ru" ? "Подтвердить" : "Approve";
   const declineText = language === "ru" ? "Отклонить" : "Decline";

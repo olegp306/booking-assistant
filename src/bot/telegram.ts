@@ -12,6 +12,7 @@ import {
   copy,
   detectLanguage,
   formatBookedMessage,
+  formatNewProviderClientNotification,
   formatPendingBookingNotification,
   formatPaymentRequest,
   formatProviderOnboardingComplete,
@@ -60,6 +61,18 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
     sessions.set(userId, { step: "name", language, ...(provider ? { providerSlug: provider.slug } : {}) });
 
     if (provider) {
+      const existingClient = input.database.findProviderClientByTelegramUserId(provider.id, String(userId));
+      const client = input.database.upsertProviderClient(provider.id, {
+        telegramUserId: String(userId),
+        displayName: ctx.from?.first_name ?? ctx.from?.username ?? "Telegram user",
+        source: "provider_link"
+      });
+      if (!existingClient && provider.telegramUserId !== "local-admin") {
+        await bot.telegram.sendMessage(
+          provider.telegramUserId,
+          formatNewProviderClientNotification({ displayName: client.displayName, source: client.source }, "ru")
+        );
+      }
       if (provider.photoRef) {
         await ctx.replyWithPhoto(provider.photoRef, { caption: formatProviderWelcome(provider, language) });
       } else {

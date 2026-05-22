@@ -8,6 +8,7 @@ import {
   formatProviderShareLink,
   formatProviderWelcome,
   formatPaymentRequest,
+  formatNewProviderClientNotification,
   formatScheduleMessage,
   formatSlotMessage,
   telegramCopy
@@ -103,6 +104,12 @@ describe("telegram copy", () => {
   it("formats a simple paid booking request without technical payment words", () => {
     expect(formatPaymentRequest("Mon 25 May, 14:00", 5000, "EUR", "ru")).toBe(
       "Чтобы закрепить время Mon 25 May, 14:00, оплатите 50.00 EUR. После оплаты запись подтвердится автоматически."
+    );
+  });
+
+  it("formats a private new client notification for the specialist", () => {
+    expect(formatNewProviderClientNotification({ displayName: "Anna", source: "provider_link" }, "ru")).toBe(
+      "У вас новый человек по ссылке: Anna. Я добавила его в вашу базу клиентов."
     );
   });
 });

@@ -3,6 +3,7 @@ const state = {
   slots: [],
   leads: [],
   bookings: [],
+  providerClients: [],
   leadInsights: {},
   providerCrm: null,
   providers: [],
@@ -34,7 +35,8 @@ const elements = {
   refreshButton: document.querySelector("#refreshButton"),
   slots: document.querySelector("#slots"),
   leads: document.querySelector("#leads"),
-  bookings: document.querySelector("#bookings")
+  bookings: document.querySelector("#bookings"),
+  providerClients: document.querySelector("#providerClients")
 };
 
 elements.refreshButton.addEventListener("click", () => loadState());
@@ -172,6 +174,20 @@ function render() {
     `,
     "No bookings yet"
   );
+  elements.providerClients.innerHTML = renderList(
+    state.providerClients,
+    (client) => `
+      <div class="item">
+        <strong>${escapeHtml(client.displayName)}</strong>
+        <div class="meta">${escapeHtml(client.status)} | ${escapeHtml(client.source)}</div>
+        <div class="insight-row">
+          <span class="pill">${escapeHtml(client.pricePreview.reason)}</span>
+          <span class="pill">${formatMinorPrice(client.pricePreview.amountMinor, client.pricePreview.currency)}</span>
+        </div>
+      </div>
+    `,
+    "No clients yet"
+  );
   bindDynamicActions();
 }
 
@@ -224,6 +240,10 @@ function formatPrice(provider) {
     return "";
   }
   return `${(provider.priceMinor / 100).toFixed(2)} ${provider.currency}`;
+}
+
+function formatMinorPrice(amountMinor, currency) {
+  return `${(amountMinor / 100).toFixed(2)} ${currency}`;
 }
 
 function bindDynamicActions() {

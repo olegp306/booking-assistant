@@ -1,6 +1,6 @@
 # Slotly AI Progress Checklist
 
-Current readiness: 100% for the approved MVP plan, plus 100% for the current free-first specialist scheduling and mock paid-booking iteration.
+Current readiness: 100% for the approved MVP plan, plus 100% for the current private specialist client CRM iteration.
 
 Last verification: 2026-05-22 19:00 Europe/Paris.
 
@@ -84,6 +84,17 @@ Last verification: 2026-05-22 19:00 Europe/Paris.
 - [x] Slice 8: Update admin UI to say specialist/booking link and expose optional paid booking.
 - [x] Slice 9: Update README with free-first positioning and mock payment boundary.
 
+## Iteration 9 Checklist: Private Specialist Client CRM
+
+- [x] Slice 1: Add failing tests for provider-scoped clients, pricing policies, Telegram notification copy, client updates, booking price previews, and `/api/state` exposure.
+- [x] Slice 2: Add provider client domain model with status, source, touch, and price resolution.
+- [x] Slice 3: Persist provider clients and provider pricing policies in SQLite.
+- [x] Slice 4: Add scoped client and pricing API endpoints.
+- [x] Slice 5: Capture Telegram deep-link visitors as private specialist clients and notify the specialist once for new clients.
+- [x] Slice 6: Apply known client pricing to paid booking payment intents.
+- [x] Slice 7: Show selected specialist clients in the admin UI.
+- [x] Slice 8: Bump package version to `0.3.0` and document the feature.
+
 ## Verification Evidence
 
 - `npm test`: 4 test files passed, 10 tests passed.
@@ -111,6 +122,9 @@ Last verification: 2026-05-22 19:00 Europe/Paris.
 - Iteration 8 `npm test`: 11 test files passed, 50 tests passed.
 - Iteration 8 `npm run build`: TypeScript compilation passed.
 - Iteration 8 smoke: created specialist `paid-smoke-specialist`, enabled full payment for 50.00 EUR, created a pending booking with payment intent, confirmed mock payment, booking became `confirmed`, and ledger split into `platform_fee = 250` and `provider_payout = 4750`.
+- Iteration 9 `npm test`: 12 test files passed, 57 tests passed.
+- Iteration 9 `npm run build`: TypeScript compilation passed.
+- Iteration 9 smoke: created specialists `smoke-singer` and `smoke-coach`, added Telegram client `tg-smoke-client` under both, confirmed each specialist sees only 1 private client, and confirmed `smoke-singer` new-client price preview is `250000 RUB`.
 
 ## Known Constraints
 

@@ -4,6 +4,7 @@ import { createBooking } from "../domain/booking.js";
 import { generateSlots, parseAvailabilityText } from "../domain/availability.js";
 import { analyzeLead } from "../domain/lead-intelligence.js";
 import { normalizeLeadInput } from "../domain/lead.js";
+import { resolveClientPrice } from "../domain/provider-client.js";
 import { buildProviderCrmSnapshot } from "../domain/provider-crm.js";
 import { createProviderProfile } from "../domain/provider.js";
 import type { CrmExporter } from "../integrations/crm.js";
@@ -22,6 +23,11 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
     const bookings = input.database.listBookings(selectedProvider.id);
     const leads = input.database.listLeads(selectedProvider.id);
     const timeOffs = input.database.listTimeOffs(selectedProvider.id);
+    const pricingPolicy = input.database.getProviderPricingPolicy(selectedProvider.id);
+    const providerClients = input.database.listProviderClients(selectedProvider.id).map((client) => ({
+      ...client,
+      pricePreview: resolveClientPrice({ client, policy: pricingPolicy })
+    }));
     const from = request.query.from ? new Date(String(request.query.from)) : new Date();
     const days = request.query.days ? Number(request.query.days) : 14;
     response.json({
@@ -40,6 +46,8 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
       leads,
       leadInsights: Object.fromEntries(leads.map((lead) => [lead.id, analyzeLead(lead)])),
       providerCrm: buildProviderCrmSnapshot({ provider: selectedProvider, bookingCount: bookings.length }),
+      providerClients,
+      pricingPolicy,
       bookings
     });
   });
@@ -80,6 +88,79 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
         platformFeeBps: typeof request.body.platformFeeBps === "number" ? request.body.platformFeeBps : undefined
       });
       response.json({ provider });
+    } catch (error) {
+      response.status(404).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.post("/api/providers/:slug/pricing-policy", (request, response) => {
+    try {
+      const provider = input.database.findProviderBySlug(request.params.slug);
+      if (!provider) {
+        throw new Error("Provider not found.");
+      }
+      const pricingPolicy = input.database.updateProviderPricingPolicy(provider.id, {
+        defaultPriceMinor: typeof request.body.defaultPriceMinor === "number" ? request.body.defaultPriceMinor : undefined,
+        newClientPriceMinor: typeof request.body.newClientPriceMinor === "number" ? request.body.newClientPriceMinor : undefined,
+        currency: request.body.currency
+      });
+      response.json({ pricingPolicy });
+    } catch (error) {
+      response.status(404).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.get("/api/providers/:slug/clients", (request, response) => {
+    try {
+      const provider = input.database.findProviderBySlug(request.params.slug);
+      if (!provider) {
+        throw new Error("Provider not found.");
+      }
+      const pricingPolicy = input.database.getProviderPricingPolicy(provider.id);
+      const clients = input.database.listProviderClients(provider.id).map((client) => ({
+        ...client,
+        pricePreview: resolveClientPrice({ client, policy: pricingPolicy })
+      }));
+      response.json({ clients });
+    } catch (error) {
+      response.status(404).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.post("/api/providers/:slug/clients", (request, response) => {
+    try {
+      const provider = input.database.findProviderBySlug(request.params.slug);
+      if (!provider) {
+        throw new Error("Provider not found.");
+      }
+      const client = input.database.upsertProviderClient(provider.id, {
+        telegramUserId: request.body.telegramUserId,
+        leadId: request.body.leadId,
+        displayName: String(request.body.displayName ?? ""),
+        source: request.body.source,
+        priceOverrideMinor: typeof request.body.priceOverrideMinor === "number" ? request.body.priceOverrideMinor : undefined,
+        notes: request.body.notes
+      });
+      const pricingPolicy = input.database.getProviderPricingPolicy(provider.id);
+      response.status(201).json({ client: { ...client, pricePreview: resolveClientPrice({ client, policy: pricingPolicy }) } });
+    } catch (error) {
+      response.status(404).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.post("/api/providers/:slug/clients/:id", (request, response) => {
+    try {
+      const provider = input.database.findProviderBySlug(request.params.slug);
+      if (!provider) {
+        throw new Error("Provider not found.");
+      }
+      const client = input.database.updateProviderClient(provider.id, request.params.id, {
+        status: request.body.status,
+        priceOverrideMinor: typeof request.body.priceOverrideMinor === "number" ? request.body.priceOverrideMinor : undefined,
+        notes: request.body.notes
+      });
+      const pricingPolicy = input.database.getProviderPricingPolicy(provider.id);
+      response.json({ client: { ...client, pricePreview: resolveClientPrice({ client, policy: pricingPolicy }) } });
     } catch (error) {
       response.status(404).json({ error: errorMessage(error) });
     }
@@ -164,6 +245,14 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
     try {
       const provider = input.database.findProviderBySlug(String(request.body.provider ?? "default")) ?? input.database.getDefaultProvider();
       const lead = input.database.findLeadById(String(request.body.leadId ?? ""));
+      const providerClient = lead?.telegramUserId
+        ? input.database.findProviderClientByTelegramUserId(provider.id, lead.telegramUserId)
+        : undefined;
+      const pricingPolicy = providerClient ? input.database.getProviderPricingPolicy(provider.id) : undefined;
+      const pricePreview =
+        providerClient && pricingPolicy && hasClientPricing(providerClient, pricingPolicy)
+          ? resolveClientPrice({ client: providerClient, policy: pricingPolicy })
+          : undefined;
       const requiresPayment = provider.paymentMode !== "none";
       const confirmationMode = requiresPayment
         ? "manual"
@@ -182,12 +271,12 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
         ? input.database.createPaymentIntent({
             bookingId: storedBooking.id,
             providerId: provider.id,
-            amountMinor: provider.priceMinor,
-            currency: provider.currency,
+            amountMinor: pricePreview?.amountMinor ?? provider.priceMinor,
+            currency: pricePreview?.currency ?? provider.currency,
             platformFeeBps: provider.platformFeeBps
           })
         : undefined;
-      response.status(201).json({ booking: storedBooking, ...(paymentIntent ? { paymentIntent } : {}) });
+      response.status(201).json({ booking: storedBooking, ...(pricePreview ? { pricePreview } : {}), ...(paymentIntent ? { paymentIntent } : {}) });
     } catch (error) {
       response.status(409).json({ error: errorMessage(error) });
     }
@@ -222,4 +311,11 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+function hasClientPricing(
+  client: { priceOverrideMinor?: number },
+  policy: { defaultPriceMinor: number; newClientPriceMinor: number }
+): boolean {
+  return typeof client.priceOverrideMinor === "number" || policy.defaultPriceMinor > 0 || policy.newClientPriceMinor > 0;
 }
