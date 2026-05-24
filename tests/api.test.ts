@@ -91,6 +91,46 @@ describe("http api", () => {
     expect(stateResponse.body.providerCrm.marketingAllowed).toBe(true);
   });
 
+  it("creates, lists, and triages product feedback with version and flow context", async () => {
+    const app = appWithMemoryDatabase();
+    const providerResponse = await request(app)
+      .post("/api/providers")
+      .send({
+        telegramUserId: "feedback-provider",
+        displayName: "Feedback Coach",
+        serviceName: "Training",
+        bio: "Strength",
+        availabilityText: "Monday to Friday 14:00-17:00"
+      })
+      .expect(201);
+
+    const created = await request(app)
+      .post("/api/feedback")
+      .send({
+        botUsername: "slotly_ai_bot",
+        telegramUserId: "tg-feedback",
+        providerId: providerResponse.body.provider.id,
+        conversationFlow: "client_booking",
+        screenOrStep: "slot",
+        messageText: "Добавьте оплату абонементом"
+      })
+      .expect(201);
+
+    expect(created.body.feedback).toMatchObject({
+      appVersion: expect.any(String),
+      category: "feature_request",
+      status: "new",
+      providerId: providerResponse.body.provider.id,
+      conversationFlow: "client_booking"
+    });
+
+    const list = await request(app).get("/api/feedback").expect(200);
+    expect(list.body.feedbackItems).toHaveLength(1);
+
+    const updated = await request(app).post(`/api/feedback/${created.body.feedback.id}/status`).send({ status: "planned" }).expect(200);
+    expect(updated.body.feedback.status).toBe("planned");
+  });
+
   it("updates specialist payment settings without changing the free default", async () => {
     const app = appWithMemoryDatabase();
     const providerResponse = await request(app)

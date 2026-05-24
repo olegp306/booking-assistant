@@ -14,6 +14,7 @@ Telegram-first booking link for simple specialists: trainers, teachers, coaches,
 - Provides a lightweight admin UI for availability, manual leads, manual bookings, and optional paid-booking setup.
 - Shows lightweight lead intelligence: contact type, missing fields, and lead temperature.
 - Supports multiple specialists through one Telegram bot and specialist-specific deep links.
+- Captures product feedback, feature requests, bugs, pricing concerns, and workflow confusion with app version and flow context.
 - Tracks specialist usage, plan status, booking milestones, and consent flags for future monetization.
 - Keeps a CRM export boundary ready for a future CRM integration.
 
@@ -100,6 +101,20 @@ npm test
 npm run build
 npm run dev
 ```
+
+## Feedback Intelligence
+
+Slotly stores product feedback in `feedback_items`. Feedback can come from `POST /api/feedback` or from obvious Telegram messages such as feature requests, bug reports, pricing concerns, and confusion. Each item stores app version, bot username, Telegram user id, provider id when known, conversation flow, step, category, sentiment, priority, summary, and status.
+
+Useful endpoints:
+
+```text
+GET /api/feedback
+POST /api/feedback
+POST /api/feedback/:id/status
+```
+
+The admin UI shows recent feedback under "Feedback Intelligence". `LocalFeedbackExporter` is the default export boundary for later Linear, GitHub Issues, Notion, Airtable, or CRM sync. `OPENAI_API_KEY` and `OPENAI_MODEL` are reserved for a future AI classifier; the current implementation uses deterministic local rules by default.
 
 ## Next CRM Step
 

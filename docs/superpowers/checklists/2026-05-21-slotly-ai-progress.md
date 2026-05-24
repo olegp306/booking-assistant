@@ -1,6 +1,6 @@
 # Slotly AI Progress Checklist
 
-Current readiness: 100% for the approved MVP plan, plus 100% for the current free-first specialist scheduling and mock paid-booking iteration.
+Current readiness: 100% for the approved MVP plan, plus 100% for the current feedback intelligence iteration.
 
 Last verification: 2026-05-22 19:00 Europe/Paris.
 
@@ -84,6 +84,16 @@ Last verification: 2026-05-22 19:00 Europe/Paris.
 - [x] Slice 8: Update admin UI to say specialist/booking link and expose optional paid booking.
 - [x] Slice 9: Update README with free-first positioning and mock payment boundary.
 
+## Iteration 9 Checklist: Feedback Intelligence
+
+- [x] Slice 1: Add implementation plan in `docs/superpowers/plans/2026-05-24-feedback-intelligence.md`.
+- [x] Slice 2: Add failing tests for deterministic feedback classification, API create/list/status, and Telegram acknowledgement copy.
+- [x] Slice 3: Add feedback domain model with category, sentiment, priority, status, flow, context, and app version.
+- [x] Slice 4: Persist feedback in SQLite and expose `GET /api/feedback`, `POST /api/feedback`, `POST /api/feedback/:id/status`.
+- [x] Slice 5: Capture obvious Telegram feedback without interrupting booking/onboarding, plus explicit `/feedback`.
+- [x] Slice 6: Add admin feedback list and local export/AI-classifier boundaries.
+- [x] Slice 7: Bump version to `0.5.0` and document feedback intelligence.
+
 ## Verification Evidence
 
 - `npm test`: 4 test files passed, 10 tests passed.
@@ -111,6 +121,9 @@ Last verification: 2026-05-22 19:00 Europe/Paris.
 - Iteration 8 `npm test`: 11 test files passed, 50 tests passed.
 - Iteration 8 `npm run build`: TypeScript compilation passed.
 - Iteration 8 smoke: created specialist `paid-smoke-specialist`, enabled full payment for 50.00 EUR, created a pending booking with payment intent, confirmed mock payment, booking became `confirmed`, and ledger split into `platform_fee = 250` and `provider_payout = 4750`.
+- Iteration 9 `npm test`: 12 test files passed, 54 tests passed.
+- Iteration 9 `npm run build`: TypeScript compilation passed.
+- Iteration 9 smoke: created feedback item from `please add memberships for regular clients`, listed 1 item, updated status to `planned`, and confirmed app version `0.5.0`.
 
 ## Known Constraints
 

@@ -2,6 +2,7 @@ import { Telegraf } from "telegraf";
 import type { Booking } from "../domain/booking.js";
 import { createBooking } from "../domain/booking.js";
 import { generateSlots, parseAvailabilityText } from "../domain/availability.js";
+import { shouldCaptureFeedback, type FeedbackConversationFlow } from "../domain/feedback.js";
 import { normalizeLeadInput } from "../domain/lead.js";
 import { createProviderProfile } from "../domain/provider.js";
 import { localDateKey } from "../domain/trainer-controls.js";
@@ -12,6 +13,7 @@ import {
   copy,
   detectLanguage,
   formatBookedMessage,
+  formatFeedbackCaptured,
   formatPendingBookingNotification,
   formatPaymentRequest,
   formatProviderOnboardingComplete,
@@ -21,6 +23,7 @@ import {
   formatSlotMessage,
   type BotLanguage
 } from "./telegram-copy.js";
+import packageJson from "../../package.json" with { type: "json" };
 
 type Step = "name" | "contact" | "topic" | "slot";
 
@@ -79,6 +82,24 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
     sessions.delete(userId);
     trainerSessions.set(userId, { step: "displayName", language });
     await ctx.reply(copy(language).trainerStart);
+  });
+
+  bot.command("feedback", async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    const text = ctx.message.text.replace(/^\/feedback(@\w+)?\s*/i, "").trim();
+    const language = detectLanguage(ctx.message.text);
+    if (text) {
+      captureTelegramFeedback({
+        database: input.database,
+        botUsername: ctx.botInfo?.username ?? "slotly_ai_bot",
+        telegramUserId: String(userId),
+        messageText: text,
+        conversationFlow: "unknown",
+        screenOrStep: "feedback_command"
+      });
+    }
+    await ctx.reply(formatFeedbackCaptured(language));
   });
 
   bot.command("slots", async (ctx) => {
@@ -183,6 +204,14 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
     const trainerSession = trainerSessions.get(userId);
 
     if (trainerSession) {
+      captureTelegramFeedback({
+        database: input.database,
+        botUsername: ctx.botInfo?.username ?? "slotly_ai_bot",
+        telegramUserId: String(userId),
+        messageText: text,
+        conversationFlow: "specialist_onboarding",
+        screenOrStep: trainerSession.step
+      });
       const completed = await handleTrainerText({
         text,
         userId,
@@ -199,6 +228,17 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
 
     const session = sessions.get(userId) ?? { step: "name", language };
     session.language = session.language ?? language;
+    captureTelegramFeedback({
+      database: input.database,
+      botUsername: ctx.botInfo?.username ?? "slotly_ai_bot",
+      telegramUserId: String(userId),
+      providerId: session.providerSlug
+        ? input.database.findProviderBySlug(session.providerSlug)?.id
+        : input.database.getDefaultProvider().id,
+      messageText: text,
+      conversationFlow: "client_booking",
+      screenOrStep: session.step
+    });
 
     if (session.step === "name") {
       session.name = text;
@@ -356,4 +396,25 @@ async function handleTrainerText(input: {
 
 function formatBookingTime(value: string): string {
   return new Date(value).toLocaleString("ru-RU", { timeZone: "Europe/Paris" });
+}
+
+function captureTelegramFeedback(input: {
+  database: AppDatabase;
+  botUsername: string;
+  telegramUserId: string;
+  providerId?: string;
+  messageText: string;
+  conversationFlow: FeedbackConversationFlow;
+  screenOrStep: string;
+}): void {
+  if (!shouldCaptureFeedback(input.messageText)) return;
+  input.database.createFeedbackItem({
+    appVersion: packageJson.version,
+    botUsername: input.botUsername,
+    telegramUserId: input.telegramUserId,
+    providerId: input.providerId,
+    conversationFlow: input.conversationFlow,
+    screenOrStep: input.screenOrStep,
+    messageText: input.messageText
+  });
 }

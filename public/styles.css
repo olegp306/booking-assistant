@@ -89,6 +89,10 @@ h2 {
   margin-bottom: 18px;
 }
 
+.feedback-panel {
+  margin-top: 18px;
+}
+
 #availabilitySummary {
   color: #596761;
   margin-bottom: 0;

@@ -8,6 +8,7 @@ import { buildProviderCrmSnapshot } from "../domain/provider-crm.js";
 import { createProviderProfile } from "../domain/provider.js";
 import type { CrmExporter } from "../integrations/crm.js";
 import type { AppDatabase } from "../storage/database.js";
+import packageJson from "../../package.json" with { type: "json" };
 
 export function createServer(input: { database: AppDatabase; crm: CrmExporter }) {
   const app = express();
@@ -80,6 +81,36 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
         platformFeeBps: typeof request.body.platformFeeBps === "number" ? request.body.platformFeeBps : undefined
       });
       response.json({ provider });
+    } catch (error) {
+      response.status(404).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.get("/api/feedback", (request, response) => {
+    response.json({ feedbackItems: input.database.listFeedbackItems(Number(request.query.limit ?? 50)) });
+  });
+
+  app.post("/api/feedback", (request, response) => {
+    try {
+      const feedback = input.database.createFeedbackItem({
+        appVersion: packageJson.version,
+        botUsername: request.body.botUsername,
+        telegramUserId: request.body.telegramUserId,
+        providerId: request.body.providerId,
+        leadId: request.body.leadId,
+        conversationFlow: request.body.conversationFlow,
+        screenOrStep: request.body.screenOrStep,
+        messageText: String(request.body.messageText ?? "")
+      });
+      response.status(201).json({ feedback });
+    } catch (error) {
+      response.status(400).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.post("/api/feedback/:id/status", (request, response) => {
+    try {
+      response.json({ feedback: input.database.updateFeedbackStatus(request.params.id, request.body.status) });
     } catch (error) {
       response.status(404).json({ error: errorMessage(error) });
     }

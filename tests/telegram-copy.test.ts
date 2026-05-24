@@ -8,6 +8,7 @@ import {
   formatProviderShareLink,
   formatProviderWelcome,
   formatPaymentRequest,
+  formatFeedbackCaptured,
   formatScheduleMessage,
   formatSlotMessage,
   telegramCopy
@@ -104,5 +105,10 @@ describe("telegram copy", () => {
     expect(formatPaymentRequest("Mon 25 May, 14:00", 5000, "EUR", "ru")).toBe(
       "Чтобы закрепить время Mon 25 May, 14:00, оплатите 50.00 EUR. После оплаты запись подтвердится автоматически."
     );
+  });
+
+  it("formats a lightweight feedback capture acknowledgement", () => {
+    expect(formatFeedbackCaptured("ru")).toBe("Спасибо, я записала это как пожелание.");
+    expect(formatFeedbackCaptured("en")).toBe("Thanks, I saved this as feedback.");
   });
 });

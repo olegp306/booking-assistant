@@ -124,6 +124,10 @@ export function buildApprovalKeyboard(bookingId: string, language: BotLanguage =
   };
 }
 
+export function formatFeedbackCaptured(language: BotLanguage = "ru"): string {
+  return language === "en" ? "Thanks, I saved this as feedback." : "Спасибо, я записала это как пожелание.";
+}
+
 export function formatProviderOnboardingComplete(providerName: string, shareLink: string, language: BotLanguage = "ru"): string {
   if (language === "en") {
     return `${providerName}, your profile is ready. Here is your personal client link:\n${shareLink}\nYou can share it with clients so they can see your open slots.`;

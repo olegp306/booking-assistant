@@ -3,6 +3,7 @@ const state = {
   slots: [],
   leads: [],
   bookings: [],
+  feedbackItems: [],
   leadInsights: {},
   providerCrm: null,
   providers: [],
@@ -34,7 +35,8 @@ const elements = {
   refreshButton: document.querySelector("#refreshButton"),
   slots: document.querySelector("#slots"),
   leads: document.querySelector("#leads"),
-  bookings: document.querySelector("#bookings")
+  bookings: document.querySelector("#bookings"),
+  feedbackItems: document.querySelector("#feedbackItems")
 };
 
 elements.refreshButton.addEventListener("click", () => loadState());
@@ -121,9 +123,14 @@ elements.availabilityForm.addEventListener("submit", async (event) => {
 });
 
 async function loadState(providerSlug = state.selectedProvider?.slug ?? "default") {
-  const response = await fetch(`/api/state?provider=${encodeURIComponent(providerSlug)}`);
+  const [response, feedbackResponse] = await Promise.all([
+    fetch(`/api/state?provider=${encodeURIComponent(providerSlug)}`),
+    fetch("/api/feedback?limit=8")
+  ]);
   const payload = await response.json();
+  const feedbackPayload = await feedbackResponse.json();
   Object.assign(state, payload);
+  state.feedbackItems = feedbackPayload.feedbackItems ?? [];
   if (!state.selectedLeadId && state.leads.length > 0) {
     state.selectedLeadId = state.leads[0].id;
   }
@@ -171,6 +178,21 @@ function render() {
       </div>
     `,
     "No bookings yet"
+  );
+  elements.feedbackItems.innerHTML = renderList(
+    state.feedbackItems,
+    (item) => `
+      <div class="item">
+        <strong>${escapeHtml(item.summary)}</strong>
+        <div class="meta">${escapeHtml(item.appVersion)} | ${escapeHtml(item.conversationFlow)} | ${escapeHtml(item.screenOrStep)}</div>
+        <div class="insight-row">
+          <span class="pill">${escapeHtml(item.category)}</span>
+          <span class="pill">${escapeHtml(item.priority)}</span>
+          <span class="pill">${escapeHtml(item.status)}</span>
+        </div>
+      </div>
+    `,
+    "No feedback yet"
   );
   bindDynamicActions();
 }
