@@ -6,11 +6,12 @@ import { analyzeLead } from "../domain/lead-intelligence.js";
 import { normalizeLeadInput } from "../domain/lead.js";
 import { buildProviderCrmSnapshot } from "../domain/provider-crm.js";
 import { createProviderProfile } from "../domain/provider.js";
+import { parseSuperAdminIds, resolveTelegramRole } from "../domain/roles.js";
 import type { CrmExporter } from "../integrations/crm.js";
 import type { AppDatabase } from "../storage/database.js";
 import packageJson from "../../package.json" with { type: "json" };
 
-export function createServer(input: { database: AppDatabase; crm: CrmExporter }) {
+export function createServer(input: { database: AppDatabase; crm: CrmExporter; superAdminTelegramIds?: string[] }) {
   const app = express();
   app.use(cors());
   app.use(express.json());
@@ -25,9 +26,20 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
     const timeOffs = input.database.listTimeOffs(selectedProvider.id);
     const from = request.query.from ? new Date(String(request.query.from)) : new Date();
     const days = request.query.days ? Number(request.query.days) : 14;
+    const telegramUserId = request.query.telegramUserId ? String(request.query.telegramUserId) : "";
+    const ownedProvider = telegramUserId ? input.database.findProviderByTelegramUserId(telegramUserId) : undefined;
     response.json({
       providers: input.database.listProviders(),
       selectedProvider,
+      ...(telegramUserId
+        ? {
+            currentUserRole: resolveTelegramRole({
+              telegramUserId,
+              superAdminTelegramIds: input.superAdminTelegramIds ?? parseSuperAdminIds(process.env.SUPER_ADMIN_TELEGRAM_IDS),
+              ownedProvider
+            })
+          }
+        : {}),
       availability,
       slots: generateSlots({
         availability,

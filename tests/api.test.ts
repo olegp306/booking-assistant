@@ -62,6 +62,33 @@ describe("http api", () => {
     });
   });
 
+  it("returns current Telegram role in state", async () => {
+    const app = appWithMemoryDatabase(undefined, { superAdminTelegramIds: ["super-1"] });
+    const providerResponse = await request(app)
+      .post("/api/providers")
+      .send({
+        telegramUserId: "trainer-role",
+        displayName: "Role Coach",
+        serviceName: "Training",
+        bio: "Strength",
+        availabilityText: "Monday to Friday 14:00-17:00"
+      })
+      .expect(201);
+
+    const specialistState = await request(app).get("/api/state?telegramUserId=trainer-role").expect(200);
+    expect(specialistState.body.currentUserRole).toEqual({
+      role: "specialist_admin",
+      providerId: providerResponse.body.provider.id,
+      providerSlug: providerResponse.body.provider.slug
+    });
+
+    const superAdminState = await request(app).get("/api/state?telegramUserId=super-1").expect(200);
+    expect(superAdminState.body.currentUserRole).toEqual({ role: "super_admin" });
+
+    const clientState = await request(app).get("/api/state?telegramUserId=client-1").expect(200);
+    expect(clientState.body.currentUserRole).toEqual({ role: "client" });
+  });
+
   it("updates provider CRM preferences and exposes consent-aware usage state", async () => {
     const app = appWithMemoryDatabase();
     const providerResponse = await request(app)
@@ -397,8 +424,11 @@ describe("http api", () => {
   });
 });
 
-function appWithMemoryDatabase(crm: CrmExporter = { exportLead: async () => undefined }) {
+function appWithMemoryDatabase(
+  crm: CrmExporter = { exportLead: async () => undefined },
+  options: { superAdminTelegramIds?: string[] } = {}
+) {
   const database = createDatabase(":memory:");
   databases.push(database);
-  return createServer({ database, crm });
+  return createServer({ database, crm, ...options });
 }

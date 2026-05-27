@@ -54,6 +54,99 @@ export function detectLanguage(text: string): BotLanguage {
   return /[а-яё]/i.test(text) ? "ru" : "en";
 }
 
+export function formatSpecialistAdminMenu(
+  provider: { displayName: string; serviceName: string; slug: string },
+  shareLink: string,
+  language: BotLanguage = "ru"
+): string {
+  if (language === "en") {
+    return [
+      `${provider.displayName}, this is your booking admin menu.`,
+      `Service: ${provider.serviceName}`,
+      `Client link: ${shareLink}`,
+      "Use the buttons below to manage your schedule."
+    ].join("\n");
+  }
+
+  return [
+    `${provider.displayName}, это ваше меню записи.`,
+    `Услуга: ${provider.serviceName}`,
+    `Ссылка для клиентов: ${shareLink}`,
+    "Кнопки ниже помогут управлять расписанием."
+  ].join("\n");
+}
+
+export function buildSpecialistAdminKeyboard(language: BotLanguage = "ru") {
+  const labels =
+    language === "en"
+      ? {
+          share: "Client link",
+          slots: "Slots",
+          today: "Today",
+          autoApprove: "Auto-approve",
+          vacation: "Vacation",
+          payment: "Payments"
+        }
+      : {
+          share: "Ссылка",
+          slots: "Слоты",
+          today: "Сегодня",
+          autoApprove: "Auto-approve",
+          vacation: "Отпуск",
+          payment: "Оплата"
+        };
+
+  return {
+    inline_keyboard: [
+      [
+        { text: labels.share, callback_data: "provider:share" },
+        { text: labels.slots, callback_data: "provider:slots" }
+      ],
+      [
+        { text: labels.today, callback_data: "provider:today" },
+        { text: labels.autoApprove, callback_data: "provider:autoapprove" }
+      ],
+      [
+        { text: labels.vacation, callback_data: "provider:vacation" },
+        { text: labels.payment, callback_data: "provider:payment" }
+      ]
+    ]
+  };
+}
+
+export function formatSuperAdminMenu(input: { providerCount: number; feedbackCount: number }, language: BotLanguage = "ru"): string {
+  if (language === "en") {
+    return [
+      "Platform admin menu.",
+      `${input.providerCount} specialists are registered.`,
+      `${input.feedbackCount} feedback items are stored.`
+    ].join("\n");
+  }
+
+  return [
+    "Меню администратора платформы.",
+    `Специалистов: ${input.providerCount}.`,
+    `Обратной связи: ${input.feedbackCount}.`
+  ].join("\n");
+}
+
+export function buildSuperAdminKeyboard(language: BotLanguage = "ru") {
+  const labels =
+    language === "en"
+      ? { providers: "Specialists", feedback: "Feedback", usage: "Usage" }
+      : { providers: "Специалисты", feedback: "Feedback", usage: "Usage" };
+
+  return {
+    inline_keyboard: [
+      [
+        { text: labels.providers, callback_data: "super:providers" },
+        { text: labels.feedback, callback_data: "super:feedback" }
+      ],
+      [{ text: labels.usage, callback_data: "super:usage" }]
+    ]
+  };
+}
+
 export function copy(language: BotLanguage = "ru") {
   return telegramCopy[language];
 }

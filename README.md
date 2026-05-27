@@ -14,6 +14,7 @@ Telegram-first booking link for simple specialists: trainers, teachers, coaches,
 - Provides a lightweight admin UI for availability, manual leads, manual bookings, and optional paid-booking setup.
 - Shows lightweight lead intelligence: contact type, missing fields, and lead temperature.
 - Supports multiple specialists through one Telegram bot and specialist-specific deep links.
+- Routes one Telegram bot into platform admin, specialist admin, and client booking modes.
 - Captures product feedback, feature requests, bugs, pricing concerns, and workflow confusion with app version and flow context.
 - Tracks specialist usage, plan status, booking milestones, and consent flags for future monetization.
 - Keeps a CRM export boundary ready for a future CRM integration.
@@ -47,6 +48,14 @@ TELEGRAM_BOT_TOKEN=your-token-here
 
 If `TELEGRAM_BOT_TOKEN` is empty, the app still runs the admin UI and API.
 
+Optional platform admins are configured by Telegram user id:
+
+```text
+SUPER_ADMIN_TELEGRAM_IDS=123456,987654
+```
+
+Those users see the platform admin menu when they send `/start` or `/menu`.
+
 ## Specialist Booking Links
 
 Create a specialist in the admin UI, through Telegram onboarding, or through `POST /api/providers`. Each specialist receives a booking link:
@@ -61,6 +70,8 @@ When a client opens the link, the Telegram bot shows the specialist profile and 
 
 ```text
 /trainer
+/menu
+/link
 /slots Monday to Friday 14:00-17:00
 /today
 /autoapprove client@example.com on
@@ -69,6 +80,10 @@ When a client opens the link, the Telegram bot shows the specialist profile and 
 ```
 
 `/trainer` starts specialist onboarding in Telegram: name, service format, short bio, optional photo, availability, and then a personal booking link.
+
+`/menu` opens the specialist admin menu inside the same Telegram bot. The menu has buttons for the client link, slots, today's bookings, auto-approve, vacation, and payment setup notes.
+
+`/link` sends the specialist's personal client booking link again.
 
 `/today` shows the specialist who is booked today. Manual bookings stay `pending` until approved with Telegram inline buttons, unless the client contact is on the specialist's auto-approve list.
 
