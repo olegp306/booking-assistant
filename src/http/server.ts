@@ -9,7 +9,8 @@ import { createProviderProfile } from "../domain/provider.js";
 import type { CrmExporter } from "../integrations/crm.js";
 import type { AppDatabase } from "../storage/database.js";
 
-export function createServer(input: { database: AppDatabase; crm: CrmExporter }) {
+export function createServer(input: { database: AppDatabase; crm: CrmExporter; botUsername?: string }) {
+  const botUsername = input.botUsername ?? "slotly_ai_bot";
   const app = express();
   app.use(cors());
   app.use(express.json());
@@ -27,6 +28,7 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
     const days = request.query.days ? Number(request.query.days) : 14;
     response.json({
       providers: input.database.listProviders(),
+      botUsername,
       selectedProvider,
       availability,
       slots: generateSlots({
@@ -115,6 +117,74 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
       }
       const timeOff = input.database.createTimeOff(provider.id, String(request.body.text ?? ""));
       response.status(201).json({ timeOff });
+    } catch (error) {
+      response.status(404).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.post("/api/providers/:slug/events", (request, response) => {
+    try {
+      const provider = input.database.findProviderBySlug(request.params.slug);
+      if (!provider) {
+        throw new Error("Provider not found.");
+      }
+      const event = input.database.createEvent({
+        providerId: provider.id,
+        title: String(request.body.title ?? ""),
+        description: String(request.body.description ?? ""),
+        start: String(request.body.start ?? ""),
+        end: String(request.body.end ?? ""),
+        capacity: Number(request.body.capacity ?? 0),
+        approvalMode: request.body.approvalMode,
+        paymentMode: request.body.paymentMode,
+        priceMinor: request.body.priceMinor,
+        currency: request.body.currency
+      });
+      response.status(201).json({ event, shareLink: `https://t.me/${botUsername}?start=event_${event.slug}` });
+    } catch (error) {
+      response.status(400).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.get("/api/events/:slug", (request, response) => {
+    try {
+      const event = input.database.findEventBySlug(request.params.slug);
+      if (!event) {
+        throw new Error("Event not found.");
+      }
+      response.json(eventPayload(input.database, event));
+    } catch (error) {
+      response.status(404).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.post("/api/events/:slug/registrations", async (request, response) => {
+    try {
+      const event = input.database.findEventBySlug(request.params.slug);
+      if (!event) {
+        throw new Error("Event not found.");
+      }
+      const lead = input.database.createLead(normalizeLeadInput(request.body), event.providerId);
+      await input.crm.exportLead({ lead });
+      input.database.markLeadExported(lead.id);
+      const registration = input.database.createEventRegistration(event, lead.id);
+      response.status(201).json({ registration, ...eventAvailability(input.database, event) });
+    } catch (error) {
+      response.status(409).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.post("/api/event-registrations/:id/approve", (request, response) => {
+    try {
+      response.json({ registration: input.database.updateEventRegistrationStatus(request.params.id, "confirmed") });
+    } catch (error) {
+      response.status(404).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.post("/api/event-registrations/:id/decline", (request, response) => {
+    try {
+      response.json({ registration: input.database.updateEventRegistrationStatus(request.params.id, "declined") });
     } catch (error) {
       response.status(404).json({ error: errorMessage(error) });
     }
@@ -231,4 +301,27 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter })
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+function eventPayload(database: AppDatabase, event: NonNullable<ReturnType<AppDatabase["findEventBySlug"]>>) {
+  return {
+    event,
+    registrations: database.listEventRegistrations(event.id),
+    ...eventAvailability(database, event)
+  };
+}
+
+function eventAvailability(database: AppDatabase, event: NonNullable<ReturnType<AppDatabase["findEventBySlug"]>>) {
+  const registrations = database.listEventRegistrations(event.id);
+  const registrationCounts = {
+    pending: registrations.filter((registration) => registration.status === "pending").length,
+    confirmed: registrations.filter((registration) => registration.status === "confirmed").length,
+    declined: registrations.filter((registration) => registration.status === "declined").length,
+    waitlisted: registrations.filter((registration) => registration.status === "waitlisted").length,
+    cancelled: registrations.filter((registration) => registration.status === "cancelled").length
+  };
+  return {
+    registrationCounts,
+    remainingSeats: Math.max(0, event.capacity - registrationCounts.pending - registrationCounts.confirmed)
+  };
 }

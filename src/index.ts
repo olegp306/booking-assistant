@@ -7,7 +7,8 @@ import { createDatabase } from "./storage/database.js";
 const port = Number(process.env.PORT ?? 3000);
 const database = createDatabase(process.env.DATABASE_PATH ?? "slotly-ai.sqlite");
 const crm = new LocalCrmExporter();
-const app = createServer({ database, crm });
+const botUsername = process.env.TELEGRAM_BOT_USERNAME ?? "slotly_ai_bot";
+const app = createServer({ database, crm, botUsername });
 
 app.listen(port, () => {
   console.log(`Slotly AI admin is running at http://localhost:${port}`);

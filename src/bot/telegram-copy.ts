@@ -203,3 +203,65 @@ export function formatPaymentRequest(label: string, amountMinor: number, currenc
 
   return `Чтобы закрепить время ${label}, оплатите ${amount} ${currency}. После оплаты запись подтвердится автоматически.`;
 }
+
+export function formatEventWelcome(
+  event: { title: string; description: string; start: string; capacity: number; remainingSeats: number },
+  language: BotLanguage = "ru"
+): string {
+  const time = new Intl.DateTimeFormat(language === "ru" ? "ru-RU" : "en-GB", {
+    timeZone: "Europe/Paris",
+    dateStyle: "medium",
+    timeStyle: "short"
+  }).format(new Date(event.start));
+
+  if (language === "en") {
+    return [
+      event.title,
+      event.description,
+      `When: ${time}`,
+      `Seats: ${event.remainingSeats} of ${event.capacity} available`
+    ].join("\n");
+  }
+
+  return [
+    event.title,
+    event.description,
+    `Когда: ${time}`,
+    `Свободно мест: ${event.remainingSeats} из ${event.capacity}`
+  ].join("\n");
+}
+
+export function formatEventRegistrationNotification(
+  input: { registrationId: string; eventTitle: string; participantName: string; contact: string },
+  language: BotLanguage = "ru"
+): string {
+  if (language === "en") {
+    return [
+      `New event request: ${input.eventTitle}`,
+      `Participant: ${input.participantName}`,
+      `Contact: ${input.contact}`,
+      `Registration ID: ${input.registrationId}`
+    ].join("\n");
+  }
+
+  return [
+    `Новая заявка на событие: ${input.eventTitle}`,
+    `Участник: ${input.participantName}`,
+    `Контакт: ${input.contact}`,
+    `Registration ID: ${input.registrationId}`
+  ].join("\n");
+}
+
+export function buildEventApprovalKeyboard(registrationId: string, language: BotLanguage = "ru") {
+  const approveText = language === "ru" ? "Подтвердить место" : "Approve seat";
+  const declineText = language === "ru" ? "Отклонить" : "Decline";
+
+  return {
+    inline_keyboard: [
+      [
+        { text: approveText, callback_data: `eventApprove:${registrationId}` },
+        { text: declineText, callback_data: `eventDecline:${registrationId}` }
+      ]
+    ]
+  };
+}

@@ -1,8 +1,8 @@
 # Slotly AI Progress Checklist
 
-Current readiness: 100% for the approved MVP plan, plus 100% for the current provider assistant FAQ onboarding iteration.
+Current readiness: 100% for the approved MVP plan, plus 100% for the provider assistant FAQ onboarding and group events MVP iterations.
 
-Last verification: 2026-05-22 19:00 Europe/Paris.
+Last verification: 2026-05-22 19:27 Europe/Paris.
 
 ## Layer Checklist
 
@@ -94,6 +94,21 @@ Last verification: 2026-05-22 19:00 Europe/Paris.
 - [x] Slice 6: Position the client-facing bot as the specialist's assistant and preview preparation answers.
 - [x] Slice 7: Update README, implementation plan, and package version.
 
+## Iteration 10 Checklist: Group Events MVP
+
+- [x] Slice 1: Start versioned work on branch `codex/group-events-mvp`.
+- [x] Slice 2: Add implementation plan in `docs/superpowers/plans/2026-05-22-group-events-mvp.md`.
+- [x] Slice 3: Add failing tests for event domain, event API, and Telegram event copy.
+- [x] Slice 4: Add `Event` and `EventRegistration` domain.
+- [x] Slice 5: Persist events and registrations in SQLite.
+- [x] Slice 6: Add event API endpoints for create, read, register, approve, and decline.
+- [x] Slice 7: Add event Telegram deep-link routing and host approval callbacks.
+- [x] Slice 8: Bump version to `0.2.0`.
+- [x] Slice 9: Update README and verify with HTTP smoke.
+- [x] Slice 10: Add production env template and configurable Telegram bot username for share links.
+- [x] Slice 11: Add future cancellation remarketing plan for freed paid slots and event seats.
+- [x] Slice 12: Add future feedback intelligence plan for feature requests, bugs, version context, and user/product context.
+
 ## Verification Evidence
 
 - `npm test`: 4 test files passed, 10 tests passed.
@@ -124,6 +139,10 @@ Last verification: 2026-05-22 19:00 Europe/Paris.
 - Iteration 9 `npm test`: 12 test files passed, 57 tests passed.
 - Iteration 9 `npm run build`: TypeScript compilation passed.
 - Iteration 9 smoke: created fitness specialist `nastya-faq`, confirmed `/api/state` returned 5 `providerAssistantFaqs` and category `fitness`.
+- Iteration 10 smoke: created host `event-smoke-host`, created event `open-singing-smoke`, registered participant as `pending`, approved registration to `confirmed`, and confirmed remaining seats = 1.
+- Iteration 10 env hardening: `TELEGRAM_BOT_USERNAME` now drives generated share links; `.env.production.example` documents required production values and reserved future AI/payment/CRM placeholders.
+- Iteration 10 marketing planning: added `2026-05-22-cancellation-remarketing.md` for cancellation-triggered subscriber broadcasts.
+- Iteration 10 feedback planning: added `2026-05-22-feedback-intelligence.md` for Telegram-captured product feedback and feature requests.
 
 ## Known Constraints
 
@@ -132,3 +151,4 @@ Last verification: 2026-05-22 19:00 Europe/Paris.
 - External CRM integration is a local no-op implementation behind the exporter interface.
 - Real payment collection is not wired yet; the app now has a local mock payment provider, payment intents, and ledger entries so a real payment adapter can be added next.
 - Telegram onboarding and approve/decline actions require a real `TELEGRAM_BOT_TOKEN` for end-to-end testing against Telegram.
+- Pull request creation requires a configured GitHub remote.

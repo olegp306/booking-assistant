@@ -8,6 +8,8 @@ import {
   formatProviderAssistantIntro,
   formatProviderAssistantQuestion,
   formatProviderShareLink,
+  formatEventRegistrationNotification,
+  formatEventWelcome,
   formatProviderWelcome,
   formatPaymentRequest,
   formatScheduleMessage,
@@ -133,5 +135,26 @@ describe("telegram copy", () => {
     expect(formatPaymentRequest("Mon 25 May, 14:00", 5000, "EUR", "ru")).toBe(
       "Чтобы закрепить время Mon 25 May, 14:00, оплатите 50.00 EUR. После оплаты запись подтвердится автоматически."
     );
+  });
+
+  it("formats group event welcome and host approval notification", () => {
+    expect(
+      formatEventWelcome({
+        title: "Open Singing Class",
+        description: "Group voice lesson",
+        start: "2026-06-20T16:00:00.000Z",
+        capacity: 8,
+        remainingSeats: 3
+      }, "ru")
+    ).toContain("Open Singing Class");
+
+    expect(
+      formatEventRegistrationNotification({
+        registrationId: "event-reg-1",
+        eventTitle: "Open Singing Class",
+        participantName: "Participant",
+        contact: "participant@example.com"
+      }, "ru")
+    ).toBe("Новая заявка на событие: Open Singing Class\nУчастник: Participant\nКонтакт: participant@example.com\nRegistration ID: event-reg-1");
   });
 });

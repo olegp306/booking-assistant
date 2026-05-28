@@ -5,6 +5,7 @@ const state = {
   bookings: [],
   leadInsights: {},
   providerCrm: null,
+  botUsername: "slotly_ai_bot",
   providers: [],
   selectedProvider: null,
   selectedLeadId: null
@@ -132,7 +133,7 @@ async function loadState(providerSlug = state.selectedProvider?.slug ?? "default
 
 function render() {
   const selectedLead = state.leads.find((lead) => lead.id === state.selectedLeadId);
-  const shareLink = state.selectedProvider ? `https://t.me/slotly_ai_bot?start=${state.selectedProvider.slug}` : "";
+  const shareLink = state.selectedProvider ? `https://t.me/${state.botUsername}?start=${state.selectedProvider.slug}` : "";
   elements.providerSummary.textContent = state.selectedProvider
     ? `${state.selectedProvider.displayName} | ${state.selectedProvider.serviceName} | ${shareLink}`
     : "No provider selected";

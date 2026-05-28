@@ -24,6 +24,7 @@ describe("http api", () => {
     expect(response.body.bookings).toEqual([]);
     expect(response.body.providers.length).toBe(1);
     expect(response.body.selectedProvider.slug).toBe("default");
+    expect(response.body.botUsername).toBe("slotly_ai_bot");
   });
 
   it("creates providers and scopes state by provider slug", async () => {
@@ -400,6 +401,57 @@ describe("http api", () => {
       "Tue 02 Jun, 15:00",
       "Tue 02 Jun, 16:00"
     ]);
+  });
+
+  it("creates a group event, registers a participant, and lets the host approve", async () => {
+    const app = appWithMemoryDatabase();
+    const providerResponse = await request(app)
+      .post("/api/providers")
+      .send({
+        telegramUserId: "event-host",
+        displayName: "Event Host",
+        serviceName: "Singing",
+        bio: "Group classes",
+        availabilityText: "Monday to Friday 14:00-17:00"
+      })
+      .expect(201);
+    const provider = providerResponse.body.provider;
+
+    const eventResponse = await request(app)
+      .post(`/api/providers/${provider.slug}/events`)
+      .send({
+        title: "Open Singing Class",
+        description: "Group voice lesson",
+        start: "2026-06-20T16:00:00.000Z",
+        end: "2026-06-20T18:00:00.000Z",
+        capacity: 2
+      })
+      .expect(201);
+
+    expect(eventResponse.body.event).toMatchObject({
+      slug: "open-singing-class",
+      capacity: 2,
+      approvalMode: "manual"
+    });
+    expect(eventResponse.body.shareLink).toBe("https://t.me/slotly_ai_bot?start=event_open-singing-class");
+
+    const registrationResponse = await request(app)
+      .post(`/api/events/${eventResponse.body.event.slug}/registrations`)
+      .send({ name: "Participant", contact: "participant@example.com", topic: "Wants to sing", source: "manual" })
+      .expect(201);
+
+    expect(registrationResponse.body.registration.status).toBe("pending");
+    expect(registrationResponse.body.remainingSeats).toBe(1);
+
+    const approved = await request(app)
+      .post(`/api/event-registrations/${registrationResponse.body.registration.id}/approve`)
+      .expect(200);
+
+    expect(approved.body.registration.status).toBe("confirmed");
+
+    const eventState = await request(app).get(`/api/events/${eventResponse.body.event.slug}`).expect(200);
+    expect(eventState.body.registrationCounts).toEqual({ pending: 0, confirmed: 1, declined: 0, waitlisted: 0, cancelled: 0 });
+    expect(eventState.body.remainingSeats).toBe(1);
   });
 });
 

@@ -10,9 +10,12 @@ import type { CrmExporter } from "../integrations/crm.js";
 import type { AppDatabase } from "../storage/database.js";
 import {
   buildApprovalKeyboard,
+  buildEventApprovalKeyboard,
   copy,
   detectLanguage,
   formatBookedMessage,
+  formatEventRegistrationNotification,
+  formatEventWelcome,
   formatProviderAssistantIntro,
   formatProviderAssistantQuestion,
   formatPendingBookingNotification,
@@ -26,6 +29,7 @@ import {
 } from "./telegram-copy.js";
 
 type Step = "name" | "contact" | "topic" | "slot";
+type EventStep = "name" | "contact";
 
 type Session = {
   step: Step;
@@ -35,6 +39,13 @@ type Session = {
   topic?: string;
   providerSlug?: string;
   slots?: Array<{ label: string; start: string; end: string }>;
+};
+
+type EventSession = {
+  step: EventStep;
+  language: BotLanguage;
+  eventSlug: string;
+  name?: string;
 };
 
 type TrainerStep = "displayName" | "serviceName" | "bio" | "photo" | "assistantFaq" | "availability";
@@ -54,6 +65,7 @@ type TrainerSession = {
 export function createTelegramBot(input: { token: string; database: AppDatabase; crm: CrmExporter }) {
   const bot = new Telegraf(input.token);
   const sessions = new Map<number, Session>();
+  const eventSessions = new Map<number, EventSession>();
   const trainerSessions = new Map<number, TrainerSession>();
 
   bot.start(async (ctx) => {
@@ -61,8 +73,21 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
     if (!userId) return;
 
     const providerSlug = "startPayload" in ctx ? String(ctx.startPayload || "") : "";
-    const provider = providerSlug ? input.database.findProviderBySlug(providerSlug) : undefined;
     const language = detectLanguage(`${ctx.from?.language_code ?? ""} ${ctx.message?.text ?? ""}`);
+    if (providerSlug.startsWith("event_")) {
+      const eventSlug = providerSlug.replace(/^event_/, "");
+      const event = input.database.findEventBySlug(eventSlug);
+      if (!event) {
+        await ctx.reply(language === "ru" ? "Не нашла это событие." : "I could not find this event.");
+        return;
+      }
+      const activeCount = input.database.countActiveEventRegistrations(event.id);
+      eventSessions.set(userId, { step: "name", language, eventSlug: event.slug });
+      await ctx.reply(formatEventWelcome({ ...event, remainingSeats: Math.max(0, event.capacity - activeCount) }, language));
+      await ctx.reply(copy(language).askName);
+      return;
+    }
+    const provider = providerSlug ? input.database.findProviderBySlug(providerSlug) : undefined;
     sessions.set(userId, { step: "name", language, ...(provider ? { providerSlug: provider.slug } : {}) });
 
     if (provider) {
@@ -193,11 +218,36 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
     }
   });
 
+  bot.action(/^eventApprove:(.+)$/, async (ctx) => {
+    const registrationId = ctx.match[1];
+    const registration = input.database.updateEventRegistrationStatus(registrationId, "confirmed");
+    const detail = input.database.getEventRegistrationDetail(registration.id);
+    await ctx.answerCbQuery("Approved");
+    await ctx.editMessageReplyMarkup(undefined);
+    await ctx.reply(`Event registration approved: ${registrationId}`);
+    if (detail?.lead.telegramUserId) {
+      await bot.telegram.sendMessage(detail.lead.telegramUserId, `Ваше место подтверждено: ${detail.event.title}.`);
+    }
+  });
+
+  bot.action(/^eventDecline:(.+)$/, async (ctx) => {
+    const registrationId = ctx.match[1];
+    const registration = input.database.updateEventRegistrationStatus(registrationId, "declined");
+    const detail = input.database.getEventRegistrationDetail(registration.id);
+    await ctx.answerCbQuery("Declined");
+    await ctx.editMessageReplyMarkup(undefined);
+    await ctx.reply(`Event registration declined: ${registrationId}`);
+    if (detail?.lead.telegramUserId) {
+      await bot.telegram.sendMessage(detail.lead.telegramUserId, "К сожалению, место на событие не подтвердили.");
+    }
+  });
+
   bot.on("text", async (ctx) => {
     const userId = ctx.from.id;
     const text = ctx.message.text.trim();
     const language = detectLanguage(text);
     const trainerSession = trainerSessions.get(userId);
+    const eventSession = eventSessions.get(userId);
 
     if (trainerSession) {
       const completed = await handleTrainerText({
@@ -211,6 +261,61 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
       if (completed) {
         trainerSessions.delete(userId);
       }
+      return;
+    }
+
+    if (eventSession) {
+      if (eventSession.step === "name") {
+        eventSession.name = text;
+        eventSession.step = "contact";
+        eventSessions.set(userId, eventSession);
+        await ctx.reply(copy(eventSession.language).askContact);
+        return;
+      }
+
+      const event = input.database.findEventBySlug(eventSession.eventSlug);
+      if (!event) {
+        await ctx.reply(eventSession.language === "ru" ? "Не нашла это событие." : "I could not find this event.");
+        eventSessions.delete(userId);
+        return;
+      }
+      const lead = input.database.createLead(
+        normalizeLeadInput({
+          name: eventSession.name,
+          contact: text,
+          topic: event.title,
+          source: "telegram",
+          telegramUserId: String(userId)
+        }),
+        event.providerId
+      );
+      const registration = input.database.createEventRegistration(event, lead.id);
+      eventSessions.delete(userId);
+      const provider = input.database.listProviders().find((item) => item.id === event.providerId);
+      if (registration.status === "pending" && provider?.telegramUserId && provider.telegramUserId !== "local-admin") {
+        await bot.telegram.sendMessage(
+          provider.telegramUserId,
+          formatEventRegistrationNotification(
+            {
+              registrationId: registration.id,
+              eventTitle: event.title,
+              participantName: lead.name,
+              contact: lead.contact
+            },
+            "ru"
+          ),
+          { reply_markup: buildEventApprovalKeyboard(registration.id, "ru") }
+        );
+      }
+      await ctx.reply(
+        registration.status === "confirmed"
+          ? eventSession.language === "ru"
+            ? "Готово, место подтверждено."
+            : "Done, your seat is confirmed."
+          : eventSession.language === "ru"
+            ? "Отлично, отправила заявку хосту. Я напишу здесь после подтверждения."
+            : "Great, I sent the request to the host. I will message you here after confirmation."
+      );
       return;
     }
 
