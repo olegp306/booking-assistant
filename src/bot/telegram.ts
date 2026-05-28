@@ -2,20 +2,25 @@ import { Telegraf } from "telegraf";
 import type { Booking } from "../domain/booking.js";
 import { createBooking } from "../domain/booking.js";
 import { generateSlots, parseAvailabilityText } from "../domain/availability.js";
+import { shouldCaptureFeedback, type FeedbackConversationFlow } from "../domain/feedback.js";
 import { normalizeLeadInput } from "../domain/lead.js";
 import { detectProviderAssistantCategory, getPreparationQuestions } from "../domain/provider-assistant.js";
 import { createProviderProfile } from "../domain/provider.js";
+import { resolveTelegramRole } from "../domain/roles.js";
 import { localDateKey } from "../domain/trainer-controls.js";
 import type { CrmExporter } from "../integrations/crm.js";
 import type { AppDatabase } from "../storage/database.js";
 import {
   buildApprovalKeyboard,
   buildEventApprovalKeyboard,
+  buildSpecialistAdminKeyboard,
+  buildSuperAdminKeyboard,
   copy,
   detectLanguage,
   formatBookedMessage,
   formatEventRegistrationNotification,
   formatEventWelcome,
+  formatFeedbackCaptured,
   formatNewProviderClientNotification,
   formatProviderAssistantIntro,
   formatProviderAssistantQuestion,
@@ -25,9 +30,12 @@ import {
   formatProviderShareLink,
   formatProviderWelcome,
   formatScheduleMessage,
+  formatSpecialistAdminMenu,
   formatSlotMessage,
+  formatSuperAdminMenu,
   type BotLanguage
 } from "./telegram-copy.js";
+import packageJson from "../../package.json" with { type: "json" };
 
 type Step = "name" | "contact" | "topic" | "slot";
 type EventStep = "name" | "contact";
@@ -63,7 +71,7 @@ type TrainerSession = {
   assistantQuestionIndex?: number;
 };
 
-export function createTelegramBot(input: { token: string; database: AppDatabase; crm: CrmExporter }) {
+export function createTelegramBot(input: { token: string; database: AppDatabase; crm: CrmExporter; superAdminTelegramIds?: string[] }) {
   const bot = new Telegraf(input.token);
   const sessions = new Map<number, Session>();
   const eventSessions = new Map<number, EventSession>();
@@ -117,7 +125,47 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
       return;
     }
 
+    const ownedProvider = input.database.findProviderByTelegramUserId(String(userId));
+    if (ownedProvider || (input.superAdminTelegramIds ?? []).includes(String(userId))) {
+      await replyWithRoleMenu({
+        userId: String(userId),
+        language,
+        botUsername: ctx.botInfo?.username ?? "slotly_ai_bot",
+        database: input.database,
+        superAdminTelegramIds: input.superAdminTelegramIds,
+        reply: (message, replyMarkup) => ctx.reply(message, replyMarkup ? { reply_markup: replyMarkup } : undefined)
+      });
+      return;
+    }
+
     await ctx.reply(copy(language).welcome);
+  });
+
+  bot.command("menu", async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    const language = detectLanguage(`${ctx.from?.language_code ?? ""} ${ctx.message.text}`);
+    await replyWithRoleMenu({
+      userId: String(userId),
+      language,
+      botUsername: ctx.botInfo?.username ?? "slotly_ai_bot",
+      database: input.database,
+      superAdminTelegramIds: input.superAdminTelegramIds,
+      reply: (message, replyMarkup) => ctx.reply(message, replyMarkup ? { reply_markup: replyMarkup } : undefined)
+    });
+  });
+
+  bot.command("link", async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    const language = detectLanguage(`${ctx.from?.language_code ?? ""} ${ctx.message.text}`);
+    const provider = input.database.findProviderByTelegramUserId(String(userId));
+    if (!provider) {
+      await ctx.reply(copy(language).providerNotFound);
+      return;
+    }
+
+    await ctx.reply(formatProviderShareLink(ctx.botInfo?.username ?? "slotly_ai_bot", provider.slug));
   });
 
   bot.command("trainer", async (ctx) => {
@@ -127,6 +175,24 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
     sessions.delete(userId);
     trainerSessions.set(userId, { step: "displayName", language });
     await ctx.reply(copy(language).trainerStart);
+  });
+
+  bot.command("feedback", async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    const text = ctx.message.text.replace(/^\/feedback(@\w+)?\s*/i, "").trim();
+    const language = detectLanguage(ctx.message.text);
+    if (text) {
+      captureTelegramFeedback({
+        database: input.database,
+        botUsername: ctx.botInfo?.username ?? "slotly_ai_bot",
+        telegramUserId: String(userId),
+        messageText: text,
+        conversationFlow: "unknown",
+        screenOrStep: "feedback_command"
+      });
+    }
+    await ctx.reply(formatFeedbackCaptured(language));
   });
 
   bot.command("slots", async (ctx) => {
@@ -255,6 +321,65 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
     }
   });
 
+  bot.action(/^provider:(share|slots|today|autoapprove|vacation|payment)$/, async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    const provider = input.database.findProviderByTelegramUserId(String(userId));
+    const language = detectLanguage(ctx.from?.language_code ?? "");
+    if (!provider) {
+      await ctx.answerCbQuery("Profile required");
+      await ctx.reply(copy(language).providerNotFound);
+      return;
+    }
+
+    await ctx.answerCbQuery();
+    const action = ctx.match[1];
+    if (action === "share") {
+      await ctx.reply(formatProviderShareLink(ctx.botInfo?.username ?? "slotly_ai_bot", provider.slug));
+      return;
+    }
+    if (action === "slots") {
+      await ctx.reply("Напишите /slots Monday to Friday 14:00-17:00, и я обновлю свободное время.");
+      return;
+    }
+    if (action === "today") {
+      const today = localDateKey(new Date(), "Europe/Paris");
+      await ctx.reply(formatScheduleMessage(input.database.listScheduleBookingsForDate(provider.id, today), language));
+      return;
+    }
+    if (action === "autoapprove") {
+      await ctx.reply("Напишите /autoapprove client@example.com on или /autoapprove client@example.com off.");
+      return;
+    }
+    if (action === "vacation") {
+      await ctx.reply("Напишите /vacation с 2026-06-01 по 2026-06-07, и я закрою эти даты для записи.");
+      return;
+    }
+    await ctx.reply("Оплата уже заложена в архитектуру. В MVP настройки оплаты доступны через API/admin UI.");
+  });
+
+  bot.action(/^super:(providers|feedback|usage)$/, async (ctx) => {
+    const userId = ctx.from?.id;
+    if (!userId) return;
+    if (!(input.superAdminTelegramIds ?? []).includes(String(userId))) {
+      await ctx.answerCbQuery("Admin only");
+      return;
+    }
+
+    await ctx.answerCbQuery();
+    const action = ctx.match[1];
+    if (action === "providers") {
+      await ctx.reply(`Specialists: ${input.database.listProviders().length}`);
+      return;
+    }
+    if (action === "feedback") {
+      await ctx.reply(`Feedback items: ${input.database.listFeedbackItems(100).length}`);
+      return;
+    }
+    const bookings = input.database.listBookings();
+    await ctx.reply(`Total bookings: ${bookings.length}`);
+  });
+
   bot.on("text", async (ctx) => {
     const userId = ctx.from.id;
     const text = ctx.message.text.trim();
@@ -263,6 +388,14 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
     const eventSession = eventSessions.get(userId);
 
     if (trainerSession) {
+      captureTelegramFeedback({
+        database: input.database,
+        botUsername: ctx.botInfo?.username ?? "slotly_ai_bot",
+        telegramUserId: String(userId),
+        messageText: text,
+        conversationFlow: "specialist_onboarding",
+        screenOrStep: trainerSession.step
+      });
       const completed = await handleTrainerText({
         text,
         userId,
@@ -334,6 +467,17 @@ export function createTelegramBot(input: { token: string; database: AppDatabase;
 
     const session = sessions.get(userId) ?? { step: "name", language };
     session.language = session.language ?? language;
+    captureTelegramFeedback({
+      database: input.database,
+      botUsername: ctx.botInfo?.username ?? "slotly_ai_bot",
+      telegramUserId: String(userId),
+      providerId: session.providerSlug
+        ? input.database.findProviderBySlug(session.providerSlug)?.id
+        : input.database.getDefaultProvider().id,
+      messageText: text,
+      conversationFlow: "client_booking",
+      screenOrStep: session.step
+    });
 
     if (session.step === "name") {
       session.name = text;
@@ -512,6 +656,50 @@ async function handleTrainerText(input: {
   return true;
 }
 
+async function replyWithRoleMenu(input: {
+  userId: string;
+  language: BotLanguage;
+  botUsername: string;
+  database: AppDatabase;
+  superAdminTelegramIds?: string[];
+  reply: (message: string, replyMarkup?: ReturnType<typeof buildSpecialistAdminKeyboard>) => Promise<unknown>;
+}): Promise<void> {
+  const ownedProvider = input.database.findProviderByTelegramUserId(input.userId);
+  const role = resolveTelegramRole({
+    telegramUserId: input.userId,
+    superAdminTelegramIds: input.superAdminTelegramIds,
+    ownedProvider
+  });
+
+  if (role.role === "super_admin") {
+    await input.reply(
+      formatSuperAdminMenu(
+        {
+          providerCount: input.database.listProviders().length,
+          feedbackCount: input.database.listFeedbackItems(100).length
+        },
+        input.language
+      ),
+      buildSuperAdminKeyboard(input.language)
+    );
+    return;
+  }
+
+  if (ownedProvider) {
+    await input.reply(
+      formatSpecialistAdminMenu(
+        ownedProvider,
+        formatProviderShareLink(input.botUsername, ownedProvider.slug),
+        input.language
+      ),
+      buildSpecialistAdminKeyboard(input.language)
+    );
+    return;
+  }
+
+  await input.reply(copy(input.language).welcome);
+}
+
 function formatBookingTime(value: string): string {
   return new Date(value).toLocaleString("ru-RU", { timeZone: "Europe/Paris" });
 }
@@ -522,4 +710,25 @@ function startAssistantFaqOnboarding(trainerSession: TrainerSession): void {
   trainerSession.assistantAnswers = [];
   trainerSession.assistantQuestionIndex = 0;
   trainerSession.step = "assistantFaq";
+}
+
+function captureTelegramFeedback(input: {
+  database: AppDatabase;
+  botUsername: string;
+  telegramUserId: string;
+  providerId?: string;
+  messageText: string;
+  conversationFlow: FeedbackConversationFlow;
+  screenOrStep: string;
+}): void {
+  if (!shouldCaptureFeedback(input.messageText)) return;
+  input.database.createFeedbackItem({
+    appVersion: packageJson.version,
+    botUsername: input.botUsername,
+    telegramUserId: input.telegramUserId,
+    providerId: input.providerId,
+    conversationFlow: input.conversationFlow,
+    screenOrStep: input.screenOrStep,
+    messageText: input.messageText
+  });
 }

@@ -7,10 +7,12 @@ import { normalizeLeadInput } from "../domain/lead.js";
 import { resolveClientPrice } from "../domain/provider-client.js";
 import { buildProviderCrmSnapshot } from "../domain/provider-crm.js";
 import { createProviderProfile } from "../domain/provider.js";
+import { parseSuperAdminIds, resolveTelegramRole } from "../domain/roles.js";
 import type { CrmExporter } from "../integrations/crm.js";
 import type { AppDatabase } from "../storage/database.js";
+import packageJson from "../../package.json" with { type: "json" };
 
-export function createServer(input: { database: AppDatabase; crm: CrmExporter; botUsername?: string }) {
+export function createServer(input: { database: AppDatabase; crm: CrmExporter; botUsername?: string; superAdminTelegramIds?: string[] }) {
   const botUsername = input.botUsername ?? "slotly_ai_bot";
   const app = express();
   app.use(cors());
@@ -32,10 +34,21 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter; b
     }));
     const from = request.query.from ? new Date(String(request.query.from)) : new Date();
     const days = request.query.days ? Number(request.query.days) : 14;
+    const telegramUserId = request.query.telegramUserId ? String(request.query.telegramUserId) : "";
+    const ownedProvider = telegramUserId ? input.database.findProviderByTelegramUserId(telegramUserId) : undefined;
     response.json({
       providers: input.database.listProviders(),
       botUsername,
       selectedProvider,
+      ...(telegramUserId
+        ? {
+            currentUserRole: resolveTelegramRole({
+              telegramUserId,
+              superAdminTelegramIds: input.superAdminTelegramIds ?? parseSuperAdminIds(process.env.SUPER_ADMIN_TELEGRAM_IDS),
+              ownedProvider
+            })
+          }
+        : {}),
       availability,
       slots: generateSlots({
         availability,
@@ -177,6 +190,35 @@ export function createServer(input: { database: AppDatabase; crm: CrmExporter; b
     }
   });
 
+  app.get("/api/feedback", (request, response) => {
+    response.json({ feedbackItems: input.database.listFeedbackItems(Number(request.query.limit ?? 50)) });
+  });
+
+  app.post("/api/feedback", (request, response) => {
+    try {
+      const feedback = input.database.createFeedbackItem({
+        appVersion: packageJson.version,
+        botUsername: request.body.botUsername,
+        telegramUserId: request.body.telegramUserId,
+        providerId: request.body.providerId,
+        leadId: request.body.leadId,
+        conversationFlow: request.body.conversationFlow,
+        screenOrStep: request.body.screenOrStep,
+        messageText: String(request.body.messageText ?? "")
+      });
+      response.status(201).json({ feedback });
+    } catch (error) {
+      response.status(400).json({ error: errorMessage(error) });
+    }
+  });
+
+  app.post("/api/feedback/:id/status", (request, response) => {
+    try {
+      response.json({ feedback: input.database.updateFeedbackStatus(request.params.id, request.body.status) });
+    } catch (error) {
+      response.status(404).json({ error: errorMessage(error) });
+    }
+  });
   app.post("/api/providers/:slug/auto-approvals", (request, response) => {
     try {
       const provider = input.database.findProviderBySlug(request.params.slug);

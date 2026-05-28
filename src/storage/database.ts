@@ -32,6 +32,7 @@ import {
   type ProviderClientStatus,
   type ProviderPricingPolicy
 } from "../domain/provider-client.js";
+import { createFeedbackItem, type FeedbackItem, type FeedbackStatus } from "../domain/feedback.js";
 
 export type StoredLead = NormalizedLead & {
   id: string;
@@ -310,6 +311,39 @@ export function createDatabase(path = "slotly-ai.sqlite") {
       ).run(next);
       const updated = db.prepare("select * from provider_clients where id = ? and provider_id = ?").get(clientId, providerId) as ProviderClientRow;
       return mapProviderClient(updated);
+    },
+    createFeedbackItem(input: Parameters<typeof createFeedbackItem>[0]): FeedbackItem {
+      const feedback = createFeedbackItem(input);
+      db.prepare(
+        `insert into feedback_items (
+          id, app_version, bot_username, telegram_user_id, provider_id, lead_id,
+          conversation_flow, screen_or_step, category, sentiment, priority,
+          message_text, summary, status, created_at
+        ) values (
+          @id, @appVersion, @botUsername, @telegramUserId, @providerId, @leadId,
+          @conversationFlow, @screenOrStep, @category, @sentiment, @priority,
+          @messageText, @summary, @status, @createdAt
+        )`
+      ).run({
+        ...feedback,
+        botUsername: feedback.botUsername ?? null,
+        telegramUserId: feedback.telegramUserId ?? null,
+        providerId: feedback.providerId ?? null,
+        leadId: feedback.leadId ?? null
+      });
+      return feedback;
+    },
+    listFeedbackItems(limit = 50): FeedbackItem[] {
+      const rows = db.prepare("select * from feedback_items order by created_at desc limit ?").all(limit) as FeedbackItemRow[];
+      return rows.map(mapFeedbackItem);
+    },
+    updateFeedbackStatus(id: string, status: FeedbackStatus): FeedbackItem {
+      db.prepare("update feedback_items set status = ? where id = ?").run(status, id);
+      const row = db.prepare("select * from feedback_items where id = ?").get(id) as FeedbackItemRow | undefined;
+      if (!row) {
+        throw new Error("Feedback item not found.");
+      }
+      return mapFeedbackItem(row);
     },
     createAutoApproval(providerId: string, contact: string): { providerId: string; contact: string; createdAt: string } {
       const normalizedContact = normalizeAutoApprovalContact(contact);
@@ -666,6 +700,24 @@ function migrate(db: Database.Database): void {
       unique(provider_id, telegram_user_id)
     );
 
+    create table if not exists feedback_items (
+      id text primary key,
+      app_version text not null,
+      bot_username text,
+      telegram_user_id text,
+      provider_id text,
+      lead_id text,
+      conversation_flow text not null,
+      screen_or_step text not null,
+      category text not null,
+      sentiment text not null,
+      priority text not null,
+      message_text text not null,
+      summary text not null,
+      status text not null,
+      created_at text not null
+    );
+
     create table if not exists payment_intents (
       id text primary key,
       booking_id text not null,
@@ -843,6 +895,24 @@ type ProviderClientRow = {
   last_seen_at: string;
 };
 
+type FeedbackItemRow = {
+  id: string;
+  app_version: string;
+  bot_username: string | null;
+  telegram_user_id: string | null;
+  provider_id: string | null;
+  lead_id: string | null;
+  conversation_flow: FeedbackItem["conversationFlow"];
+  screen_or_step: string;
+  category: FeedbackItem["category"];
+  sentiment: FeedbackItem["sentiment"];
+  priority: FeedbackItem["priority"];
+  message_text: string;
+  summary: string;
+  status: FeedbackStatus;
+  created_at: string;
+};
+
 type PaymentIntentRow = {
   id: string;
   booking_id: string;
@@ -982,6 +1052,26 @@ function mapProviderClient(row: ProviderClientRow): ProviderClient {
     notes: row.notes ?? undefined,
     firstSeenAt: row.first_seen_at,
     lastSeenAt: row.last_seen_at
+  };
+}
+
+function mapFeedbackItem(row: FeedbackItemRow): FeedbackItem {
+  return {
+    id: row.id,
+    appVersion: row.app_version,
+    botUsername: row.bot_username ?? undefined,
+    telegramUserId: row.telegram_user_id ?? undefined,
+    providerId: row.provider_id ?? undefined,
+    leadId: row.lead_id ?? undefined,
+    conversationFlow: row.conversation_flow,
+    screenOrStep: row.screen_or_step,
+    category: row.category,
+    sentiment: row.sentiment,
+    priority: row.priority,
+    messageText: row.message_text,
+    summary: row.summary,
+    status: row.status,
+    createdAt: row.created_at
   };
 }
 

@@ -4,6 +4,7 @@ const state = {
   leads: [],
   bookings: [],
   providerClients: [],
+  feedbackItems: [],
   leadInsights: {},
   providerCrm: null,
   botUsername: "slotly_ai_bot",
@@ -37,7 +38,8 @@ const elements = {
   slots: document.querySelector("#slots"),
   leads: document.querySelector("#leads"),
   bookings: document.querySelector("#bookings"),
-  providerClients: document.querySelector("#providerClients")
+  providerClients: document.querySelector("#providerClients"),
+  feedbackItems: document.querySelector("#feedbackItems")
 };
 
 elements.refreshButton.addEventListener("click", () => loadState());
@@ -126,7 +128,10 @@ elements.availabilityForm.addEventListener("submit", async (event) => {
 async function loadState(providerSlug = state.selectedProvider?.slug ?? "default") {
   const response = await fetch(`/api/state?provider=${encodeURIComponent(providerSlug)}`);
   const payload = await response.json();
+  const feedbackResponse = await fetch("/api/feedback?limit=8");
+  const feedbackPayload = feedbackResponse.ok ? await feedbackResponse.json() : { feedbackItems: [] };
   Object.assign(state, payload);
+  state.feedbackItems = feedbackPayload.feedbackItems ?? [];
   if (!state.selectedLeadId && state.leads.length > 0) {
     state.selectedLeadId = state.leads[0].id;
   }
@@ -188,6 +193,21 @@ function render() {
       </div>
     `,
     "No clients yet"
+  );
+  elements.feedbackItems.innerHTML = renderList(
+    state.feedbackItems,
+    (item) => `
+      <div class="item">
+        <strong>${escapeHtml(item.category)}</strong>
+        <div>${escapeHtml(item.message)}</div>
+        <div class="insight-row">
+          <span class="pill">${escapeHtml(item.status)}</span>
+          <span class="pill">${escapeHtml(item.softwareVersion)}</span>
+          <span class="pill">${escapeHtml(item.source)}</span>
+        </div>
+      </div>
+    `,
+    "No product feedback yet"
   );
   bindDynamicActions();
 }

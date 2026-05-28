@@ -586,10 +586,77 @@ describe("http api", () => {
     expect(eventState.body.registrationCounts).toEqual({ pending: 0, confirmed: 1, declined: 0, waitlisted: 0, cancelled: 0 });
     expect(eventState.body.remainingSeats).toBe(1);
   });
+
+  it("returns current Telegram role in state", async () => {
+    const app = appWithMemoryDatabase(undefined, { superAdminTelegramIds: ["super-1"] });
+    const providerResponse = await request(app)
+      .post("/api/providers")
+      .send({
+        telegramUserId: "trainer-role",
+        displayName: "Role Coach",
+        serviceName: "Training",
+        bio: "Strength",
+        availabilityText: "Monday to Friday 14:00-17:00"
+      })
+      .expect(201);
+
+    const specialistState = await request(app).get("/api/state?telegramUserId=trainer-role").expect(200);
+    expect(specialistState.body.currentUserRole).toEqual({
+      role: "specialist_admin",
+      providerId: providerResponse.body.provider.id,
+      providerSlug: providerResponse.body.provider.slug
+    });
+
+    const superAdminState = await request(app).get("/api/state?telegramUserId=super-1").expect(200);
+    expect(superAdminState.body.currentUserRole).toEqual({ role: "super_admin" });
+  });
+
+  it("creates, lists, and triages product feedback with version and flow context", async () => {
+    const app = appWithMemoryDatabase();
+    const providerResponse = await request(app)
+      .post("/api/providers")
+      .send({
+        telegramUserId: "feedback-provider",
+        displayName: "Feedback Coach",
+        serviceName: "Training",
+        bio: "Strength",
+        availabilityText: "Monday to Friday 14:00-17:00"
+      })
+      .expect(201);
+
+    const created = await request(app)
+      .post("/api/feedback")
+      .send({
+        botUsername: "slotly_ai_bot",
+        telegramUserId: "tg-feedback",
+        providerId: providerResponse.body.provider.id,
+        conversationFlow: "client_booking",
+        screenOrStep: "slot",
+        messageText: "add subscription payment please"
+      })
+      .expect(201);
+
+    expect(created.body.feedback).toMatchObject({
+      appVersion: expect.any(String),
+      category: "pricing_feedback",
+      status: "new",
+      providerId: providerResponse.body.provider.id,
+      conversationFlow: "client_booking"
+    });
+
+    const list = await request(app).get("/api/feedback").expect(200);
+    expect(list.body.feedbackItems).toHaveLength(1);
+
+    const updated = await request(app).post(`/api/feedback/${created.body.feedback.id}/status`).send({ status: "planned" }).expect(200);
+    expect(updated.body.feedback.status).toBe("planned");
+  });
 });
 
-function appWithMemoryDatabase(crm: CrmExporter = { exportLead: async () => undefined }) {
+function appWithMemoryDatabase(
+  crm: CrmExporter = { exportLead: async () => undefined },
+  options: { superAdminTelegramIds?: string[]; botUsername?: string } = {}
+) {
   const database = createDatabase(":memory:");
   databases.push(database);
-  return createServer({ database, crm });
+  return createServer({ database, crm, ...options });
 }

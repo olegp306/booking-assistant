@@ -45,11 +45,14 @@ If port `3001` is busy, change `PORT` in `.env`.
 ```text
 TELEGRAM_BOT_TOKEN=your-token-here
 TELEGRAM_BOT_USERNAME=your_bot_username
+SUPER_ADMIN_TELEGRAM_IDS=123456789,987654321
 ```
 
 3. Restart the app with `npm run dev`.
 
 If `TELEGRAM_BOT_TOKEN` is empty, the app still runs the admin UI and API.
+
+`SUPER_ADMIN_TELEGRAM_IDS` is optional. Telegram users listed there get the platform-level admin menu for product oversight, feedback review, and future customer control.
 
 ## Production Env
 
@@ -96,6 +99,7 @@ The first API surface is `POST /api/providers/:slug/pricing-policy`, `POST /api/
 
 ```text
 /trainer
+/admin
 /slots Monday to Friday 14:00-17:00
 /today
 /autoapprove client@example.com on
@@ -104,6 +108,8 @@ The first API surface is `POST /api/providers/:slug/pricing-policy`, `POST /api/
 ```
 
 `/trainer` starts specialist onboarding in Telegram: name, service format, short bio, optional photo, adaptive preparation questions, availability, and then a personal booking link.
+
+`/admin` opens the Telegram admin menu. A specialist sees their own booking link, today's schedule, clients, slots, and settings. A super-admin sees platform-level product controls.
 
 `/today` shows the specialist who is booked today. Manual bookings stay `pending` until approved with Telegram inline buttons, unless the client contact is on the specialist's auto-approve list.
 
@@ -144,6 +150,12 @@ https://t.me/slotly_ai_bot?start=event_open-singing-class
 ```
 
 Clients can register for the same date/time. Manual events create `pending` registrations, the host approves or declines, and capacity counts pending plus confirmed seats.
+
+## Product Feedback Intelligence
+
+Telegram messages that look like feature requests, complaints, UX friction, pricing questions, or integrations are captured into a shared product-feedback store with software version, source, screen context, Telegram user metadata, and optional specialist/client context.
+
+Use `GET /api/feedback` to review recent feedback and `POST /api/feedback/:id/status` to triage it. This gives the platform owner a memory of what real users asked for while using the bot.
 
 ## Useful Commands
 
