@@ -10,6 +10,7 @@ import {
   formatProviderShareLink,
   formatEventRegistrationNotification,
   formatEventWelcome,
+  formatNewProviderClientNotification,
   formatProviderWelcome,
   formatPaymentRequest,
   formatScheduleMessage,
@@ -156,5 +157,11 @@ describe("telegram copy", () => {
         contact: "participant@example.com"
       }, "ru")
     ).toBe("Новая заявка на событие: Open Singing Class\nУчастник: Participant\nКонтакт: participant@example.com\nRegistration ID: event-reg-1");
+  });
+
+  it("formats a private new client notification for the specialist", () => {
+    expect(formatNewProviderClientNotification({ displayName: "Anna", source: "provider_link" }, "en")).toBe(
+      "New person from your booking link: Anna. I added them to your client list."
+    );
   });
 });

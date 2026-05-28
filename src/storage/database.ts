@@ -24,6 +24,14 @@ import { parseTimeOffText, type TimeOffBlock } from "../domain/time-off.js";
 import { isSameLocalDate, normalizeAutoApprovalContact, type ScheduleBooking } from "../domain/trainer-controls.js";
 import type { ConfirmationMode, ProviderBillingStatus, ProviderPlan, ProviderProfile } from "../domain/provider.js";
 import { buildProviderAssistantFaqs, type ProviderAssistantCategory, type ProviderAssistantFaq } from "../domain/provider-assistant.js";
+import {
+  createProviderClient,
+  touchProviderClient,
+  type ProviderClient,
+  type ProviderClientSource,
+  type ProviderClientStatus,
+  type ProviderPricingPolicy
+} from "../domain/provider-client.js";
 
 export type StoredLead = NormalizedLead & {
   id: string;
@@ -167,6 +175,141 @@ export function createDatabase(path = "slotly-ai.sqlite") {
       const rows = db.prepare("select * from provider_assistant_faqs where provider_id = ? order by position asc").all(providerId) as
         | ProviderAssistantFaqRow[];
       return rows.map(mapProviderAssistantFaq);
+    },
+    getProviderPricingPolicy(providerId: string): ProviderPricingPolicy {
+      const row = db.prepare("select * from provider_pricing_policies where provider_id = ?").get(providerId) as
+        | ProviderPricingPolicyRow
+        | undefined;
+      return row
+        ? mapProviderPricingPolicy(row)
+        : {
+            providerId,
+            defaultPriceMinor: 0,
+            newClientPriceMinor: 0,
+            currency: "EUR"
+          };
+    },
+    updateProviderPricingPolicy(
+      providerId: string,
+      input: Partial<Pick<ProviderPricingPolicy, "defaultPriceMinor" | "newClientPriceMinor" | "currency">>
+    ): ProviderPricingPolicy {
+      const existing = this.getProviderPricingPolicy(providerId);
+      const policy: ProviderPricingPolicy = {
+        providerId,
+        defaultPriceMinor: normalizeMinorAmount(input.defaultPriceMinor ?? existing.defaultPriceMinor, "Default price"),
+        newClientPriceMinor: normalizeMinorAmount(input.newClientPriceMinor ?? existing.newClientPriceMinor, "New client price"),
+        currency: normalizeCurrency(input.currency ?? existing.currency)
+      };
+      db.prepare(
+        `insert into provider_pricing_policies (
+          provider_id, default_price_minor, new_client_price_minor, currency, updated_at
+        ) values (
+          @providerId, @defaultPriceMinor, @newClientPriceMinor, @currency, @updatedAt
+        )
+        on conflict(provider_id) do update set
+          default_price_minor = excluded.default_price_minor,
+          new_client_price_minor = excluded.new_client_price_minor,
+          currency = excluded.currency,
+          updated_at = excluded.updated_at`
+      ).run({ ...policy, updatedAt: now() });
+      return this.getProviderPricingPolicy(providerId);
+    },
+    upsertProviderClient(
+      providerId: string,
+      input: {
+        telegramUserId?: string;
+        leadId?: string;
+        displayName: string;
+        source?: ProviderClientSource;
+        priceOverrideMinor?: number;
+        notes?: string;
+      }
+    ): ProviderClient {
+      const telegramUserId = input.telegramUserId?.trim();
+      const existing = telegramUserId
+        ? ((db
+            .prepare("select * from provider_clients where provider_id = ? and telegram_user_id = ?")
+            .get(providerId, telegramUserId) as ProviderClientRow | undefined) ?? undefined)
+        : undefined;
+
+      if (existing) {
+        const client = touchProviderClient(mapProviderClient(existing));
+        const displayName = input.displayName.trim() || client.displayName;
+        db.prepare(
+          `update provider_clients
+           set display_name = @displayName,
+               lead_id = coalesce(@leadId, lead_id),
+               last_seen_at = @lastSeenAt
+           where id = @id and provider_id = @providerId`
+        ).run({
+          id: client.id,
+          providerId: client.providerId,
+          displayName,
+          leadId: input.leadId ?? null,
+          lastSeenAt: client.lastSeenAt
+        });
+        return this.findProviderClientByTelegramUserId(providerId, telegramUserId as string) as ProviderClient;
+      }
+
+      const client = createProviderClient({ providerId, ...input, telegramUserId });
+      db.prepare(
+        `insert into provider_clients (
+          id, provider_id, telegram_user_id, lead_id, display_name, status, source,
+          price_override_minor, notes, first_seen_at, last_seen_at
+        ) values (
+          @id, @providerId, @telegramUserId, @leadId, @displayName, @status, @source,
+          @priceOverrideMinor, @notes, @firstSeenAt, @lastSeenAt
+        )`
+      ).run({
+        ...client,
+        telegramUserId: client.telegramUserId ?? null,
+        leadId: client.leadId ?? null,
+        priceOverrideMinor: client.priceOverrideMinor ?? null,
+        notes: client.notes ?? null
+      });
+      return client;
+    },
+    findProviderClientByTelegramUserId(providerId: string, telegramUserId: string): ProviderClient | undefined {
+      const row = db.prepare("select * from provider_clients where provider_id = ? and telegram_user_id = ?").get(providerId, telegramUserId) as
+        | ProviderClientRow
+        | undefined;
+      return row ? mapProviderClient(row) : undefined;
+    },
+    listProviderClients(providerId: string): ProviderClient[] {
+      const rows = db.prepare("select * from provider_clients where provider_id = ? order by last_seen_at desc").all(providerId) as ProviderClientRow[];
+      return rows.map(mapProviderClient);
+    },
+    updateProviderClient(
+      providerId: string,
+      clientId: string,
+      input: Partial<Pick<ProviderClient, "status" | "priceOverrideMinor" | "notes">>
+    ): ProviderClient {
+      const row = db.prepare("select * from provider_clients where id = ? and provider_id = ?").get(clientId, providerId) as
+        | ProviderClientRow
+        | undefined;
+      if (!row) {
+        throw new Error("Client not found.");
+      }
+      const existing = mapProviderClient(row);
+      const next = {
+        id: clientId,
+        providerId,
+        status: input.status ?? existing.status,
+        priceOverrideMinor:
+          input.priceOverrideMinor === undefined ? (existing.priceOverrideMinor ?? null) : normalizeMinorAmount(input.priceOverrideMinor, "Client price"),
+        notes: input.notes ?? existing.notes ?? null,
+        lastSeenAt: now()
+      };
+      db.prepare(
+        `update provider_clients
+         set status = @status,
+             price_override_minor = @priceOverrideMinor,
+             notes = @notes,
+             last_seen_at = @lastSeenAt
+         where id = @id and provider_id = @providerId`
+      ).run(next);
+      const updated = db.prepare("select * from provider_clients where id = ? and provider_id = ?").get(clientId, providerId) as ProviderClientRow;
+      return mapProviderClient(updated);
     },
     createAutoApproval(providerId: string, contact: string): { providerId: string; contact: string; createdAt: string } {
       const normalizedContact = normalizeAutoApprovalContact(contact);
@@ -500,6 +643,29 @@ function migrate(db: Database.Database): void {
       created_at text not null
     );
 
+    create table if not exists provider_pricing_policies (
+      provider_id text primary key,
+      default_price_minor integer not null default 0,
+      new_client_price_minor integer not null default 0,
+      currency text not null default 'EUR',
+      updated_at text not null
+    );
+
+    create table if not exists provider_clients (
+      id text primary key,
+      provider_id text not null,
+      telegram_user_id text,
+      lead_id text,
+      display_name text not null,
+      status text not null,
+      source text not null,
+      price_override_minor integer,
+      notes text,
+      first_seen_at text not null,
+      last_seen_at text not null,
+      unique(provider_id, telegram_user_id)
+    );
+
     create table if not exists payment_intents (
       id text primary key,
       booking_id text not null,
@@ -655,6 +821,28 @@ type ProviderAssistantFaqRow = {
   created_at: string;
 };
 
+type ProviderPricingPolicyRow = {
+  provider_id: string;
+  default_price_minor: number;
+  new_client_price_minor: number;
+  currency: string;
+  updated_at: string;
+};
+
+type ProviderClientRow = {
+  id: string;
+  provider_id: string;
+  telegram_user_id: string | null;
+  lead_id: string | null;
+  display_name: string;
+  status: ProviderClientStatus;
+  source: ProviderClientSource;
+  price_override_minor: number | null;
+  notes: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+};
+
 type PaymentIntentRow = {
   id: string;
   booking_id: string;
@@ -772,6 +960,31 @@ function mapProviderAssistantFaq(row: ProviderAssistantFaqRow): ProviderAssistan
   };
 }
 
+function mapProviderPricingPolicy(row: ProviderPricingPolicyRow): ProviderPricingPolicy {
+  return {
+    providerId: row.provider_id,
+    defaultPriceMinor: row.default_price_minor,
+    newClientPriceMinor: row.new_client_price_minor,
+    currency: row.currency
+  };
+}
+
+function mapProviderClient(row: ProviderClientRow): ProviderClient {
+  return {
+    id: row.id,
+    providerId: row.provider_id,
+    telegramUserId: row.telegram_user_id ?? undefined,
+    leadId: row.lead_id ?? undefined,
+    displayName: row.display_name,
+    status: row.status,
+    source: row.source,
+    priceOverrideMinor: row.price_override_minor ?? undefined,
+    notes: row.notes ?? undefined,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at
+  };
+}
+
 function mapPaymentIntent(row: PaymentIntentRow): PaymentIntent {
   return {
     id: row.id,
@@ -827,4 +1040,19 @@ function mapEventRegistration(row: EventRegistrationRow): EventRegistration {
 
 function now(): string {
   return new Date().toISOString();
+}
+
+function normalizeMinorAmount(value: number, label: string): number {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative number.`);
+  }
+  return Math.round(value);
+}
+
+function normalizeCurrency(value: string): string {
+  const currency = value.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) {
+    throw new Error("Currency must be a three-letter code.");
+  }
+  return currency;
 }

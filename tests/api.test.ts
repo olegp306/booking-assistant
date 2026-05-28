@@ -138,6 +138,81 @@ describe("http api", () => {
     expect(stateResponse.body.providerCrm.marketingAllowed).toBe(true);
   });
 
+  it("keeps specialist client CRM private by provider and applies pricing policy", async () => {
+    const app = appWithMemoryDatabase();
+    const firstProvider = await request(app)
+      .post("/api/providers")
+      .send({
+        telegramUserId: "specialist-clients-1",
+        displayName: "First Specialist",
+        serviceName: "Singing",
+        bio: "Voice",
+        availabilityText: "Monday to Friday 14:00-17:00"
+      })
+      .expect(201);
+    const secondProvider = await request(app)
+      .post("/api/providers")
+      .send({
+        telegramUserId: "specialist-clients-2",
+        displayName: "Second Specialist",
+        serviceName: "Dance",
+        bio: "Movement",
+        availabilityText: "Monday to Friday 14:00-17:00"
+      })
+      .expect(201);
+
+    await request(app)
+      .post(`/api/providers/${firstProvider.body.provider.slug}/pricing-policy`)
+      .send({ defaultPriceMinor: 200000, newClientPriceMinor: 250000, currency: "RUB" })
+      .expect(200);
+
+    await request(app)
+      .post(`/api/providers/${firstProvider.body.provider.slug}/clients`)
+      .send({ telegramUserId: "tg-client", displayName: "Anna", source: "provider_link" })
+      .expect(201);
+    await request(app)
+      .post(`/api/providers/${secondProvider.body.provider.slug}/clients`)
+      .send({ telegramUserId: "tg-client", displayName: "Anna", source: "provider_link" })
+      .expect(201);
+
+    const firstClients = await request(app).get(`/api/providers/${firstProvider.body.provider.slug}/clients`).expect(200);
+    const secondClients = await request(app).get(`/api/providers/${secondProvider.body.provider.slug}/clients`).expect(200);
+
+    expect(firstClients.body.clients).toHaveLength(1);
+    expect(secondClients.body.clients).toHaveLength(1);
+    expect(firstClients.body.clients[0].providerId).toBe(firstProvider.body.provider.id);
+    expect(secondClients.body.clients[0].providerId).toBe(secondProvider.body.provider.id);
+    expect(firstClients.body.clients[0].pricePreview).toEqual({
+      amountMinor: 250000,
+      currency: "RUB",
+      reason: "new_client"
+    });
+
+    const updatedClient = await request(app)
+      .post(`/api/providers/${firstProvider.body.provider.slug}/clients/${firstClients.body.clients[0].id}`)
+      .send({ status: "active", priceOverrideMinor: 150000, notes: "Long-term student" })
+      .expect(200);
+
+    expect(updatedClient.body.client).toMatchObject({
+      providerId: firstProvider.body.provider.id,
+      status: "active",
+      notes: "Long-term student",
+      pricePreview: {
+        amountMinor: 150000,
+        currency: "RUB",
+        reason: "client_override"
+      }
+    });
+
+    const firstState = await request(app).get(`/api/state?provider=${firstProvider.body.provider.slug}`).expect(200);
+    expect(firstState.body.providerClients).toHaveLength(1);
+    expect(firstState.body.providerClients[0]).toMatchObject({
+      providerId: firstProvider.body.provider.id,
+      displayName: "Anna",
+      status: "active"
+    });
+  });
+
   it("updates specialist payment settings without changing the free default", async () => {
     const app = appWithMemoryDatabase();
     const providerResponse = await request(app)
@@ -283,6 +358,64 @@ describe("http api", () => {
       expect.objectContaining({ type: "platform_fee", amountMinor: 250 }),
       expect.objectContaining({ type: "provider_payout", amountMinor: 4750 })
     ]);
+  });
+
+  it("uses a known provider client price when creating a paid booking", async () => {
+    const app = appWithMemoryDatabase();
+    const providerResponse = await request(app)
+      .post("/api/providers")
+      .send({
+        telegramUserId: "paid-client-specialist",
+        displayName: "Paid Coach",
+        serviceName: "Coaching",
+        bio: "Practice",
+        confirmationMode: "manual",
+        availabilityText: "Monday to Friday 14:00-17:00"
+      })
+      .expect(201);
+    const provider = providerResponse.body.provider;
+
+    await request(app)
+      .post(`/api/providers/${provider.slug}/payment-settings`)
+      .send({ paymentMode: "full", priceMinor: 100000, currency: "RUB", platformFeeBps: 500 })
+      .expect(200);
+    await request(app)
+      .post(`/api/providers/${provider.slug}/pricing-policy`)
+      .send({ defaultPriceMinor: 200000, newClientPriceMinor: 250000, currency: "RUB" })
+      .expect(200);
+    await request(app)
+      .post(`/api/providers/${provider.slug}/clients`)
+      .send({ telegramUserId: "tg-priced-client", displayName: "Anna", source: "provider_link", priceOverrideMinor: 150000 })
+      .expect(201);
+
+    const leadResponse = await request(app)
+      .post("/api/leads")
+      .send({
+        provider: provider.slug,
+        telegramUserId: "tg-priced-client",
+        name: "Anna",
+        contact: "anna@example.com",
+        topic: "Coaching",
+        source: "telegram"
+      })
+      .expect(201);
+    const stateResponse = await request(app).get(`/api/state?provider=${provider.slug}`).expect(200);
+    const slot = stateResponse.body.slots[0];
+
+    const bookingResponse = await request(app)
+      .post("/api/bookings")
+      .send({ provider: provider.slug, leadId: leadResponse.body.lead.id, start: slot.start, end: slot.end })
+      .expect(201);
+
+    expect(bookingResponse.body.pricePreview).toEqual({
+      amountMinor: 150000,
+      currency: "RUB",
+      reason: "client_override"
+    });
+    expect(bookingResponse.body.paymentIntent).toMatchObject({
+      amountMinor: 150000,
+      currency: "RUB"
+    });
   });
 
   it("approves and declines pending bookings", async () => {
